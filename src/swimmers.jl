@@ -58,9 +58,9 @@ function update_boundary!(uf::UniFlagellate, t::T) where {T <: Number}
     end 
 end
 
-struct Flagellate{T <: Number} <: Swimmer
+struct Flagellate{T <: Number, F <: Flagellum} <: Swimmer
     body::CellBody
-    flagella::Vector{Flagellum}
+    flagella::Vector{F}
     config::Configuration
     ϵ::T
 
@@ -70,11 +70,11 @@ end
 
 function Flagellate(
     body::CellBody, 
-    flagella::Vector{<:Flagellum};
+    flagella::Vector{F};
     location=SVector(0., 0., 0.),
     orientation=I3,
     ϵ=0.01
-)
+) where {F <: Flagellum}
     force_pt_indices = [body.N + 1]
     quad_pt_indices  = [body.Q + 1]
     for i in eachindex(flagella[1:end-1])
@@ -100,8 +100,8 @@ function Flagellate(
             location,
             orientation,
             zeros(3, body.N + sum(f.N - 1 for f in flagella)),
-            zeros(3, body.Q + sum(f.Q - 1 for f in flagella)),
             zeros(3, body.N + sum(f.N - 1 for f in flagella)),
+            zeros(3, body.Q + sum(f.Q - 1 for f in flagella)),
             nearest
         ),
         ϵ,
