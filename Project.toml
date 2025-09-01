@@ -1,0 +1,24 @@
+name = "MicroSwimmers"
+uuid = "ef328505-3371-4e33-b87d-074fe3df2cb3"
+authors = ["James Cass <j.cass@exeter.ac.uk>"]
+version = "0.1.0"
+
+[deps]
+DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
+GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+DiffEqBase = "6.183.2"
+GeometryBasics = "0.5.10"
+LinearAlgebra = "1.11.0"
+LinearSolve = "3.37.0"
+OrdinaryDiffEq = "6.101.0"
+Parameters = "0.12.3"
+SparseArrays = "1.11.0"
+StaticArrays = "1.9.14"
