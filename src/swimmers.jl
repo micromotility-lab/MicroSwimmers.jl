@@ -1,10 +1,46 @@
 abstract type Swimmer <: FluidBoundary end
 
-function move!(S::Swimmer, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
+function move_boundary!(S::Swimmer, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
     update_boundary!(S, t)
     S.config.location = x0
     S.config.orientation = B
 end
+
+struct Flagellum{M <: FlagellumModel, T <: Number} <: Swimmer   # subtypes Swimmer for isolated flagella
+    model::M
+    N::Int
+    Q::Int
+    config::Configuration{T}
+    ϵ::T
+end
+
+function Flagellum(; 
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
+    N=23, 
+    location=SVector(0., 0., 0.),
+    orientation=I3,
+    Q=127, 
+    ϵ=0.01
+)
+    f = Flagellum(
+        model,
+        N,
+        Q,
+        Configuration(location, orientation, zeros(3,N), zeros(3,N), zeros(3,Q), zeros(Int, Q)),
+        ϵ
+    )
+    update_boundary!(f, 0.)
+    f.config.nearest .= nearest_neighbour(f.config.force_pts, f.config.quad_pts)
+    f
+end
+
+
+function update_boundary!(fl::Flagellum, t::T) where {T <: Number}
+    @unpack force_pts, quad_pts, velocity = fl.config
+    fl.model(force_pts, velocity, t)
+    fl.model(quad_pts, t)
+end
+
 
 mutable struct UniFlagellate{T <: Number} <: Swimmer
     body::CellBody

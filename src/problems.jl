@@ -25,12 +25,12 @@ function SwimmingProblem(S::Swimmer, x0::SVector{3,T}=SVector(0., 0., 0.), B::SM
         zeros(T, N + 6),
         false
     )
-    move!(sp, x0, B, zero(T))
+    move_boundary!(sp, x0, B, zero(T))
     sp
 end
 
-function move!(sp::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
-    move!(sp.swimmer, x0, B, t)
+function move_boundary!(sp::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
+    move_boundary!(sp.swimmer, x0, B, t)
 
     @unpack force_pts, quad_pts, velocity = sp.swimmer.config
     @views begin
@@ -40,9 +40,9 @@ function move!(sp::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) w
     end
 end
 
-function move!(sp::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3, T}, t::T) where {T <: Number}
+function move_boundary!(sp::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3, T}, t::T) where {T <: Number}
     B = hcat(b1, b2, cross(b1, b2))
-    move!(sp, x0, B, t)
+    move_boundary!(sp, x0, B, t)
 end
 
 function solve_problem!(sp::SwimmingProblem; μ=1.)
@@ -54,12 +54,8 @@ function solve_problem!(sp::SwimmingProblem; μ=1.)
         sp.swimmer.config.nearest,
         sp.swimmer.ϵ
     )
-    # @unpack lin_prob, config, force_vals = sp
-    # @unpack nearest, ϵ = sp.swimmer
-    # x0 = sp.swimmer.config.location
 
-    # swimming_matrix!(lin_prob.A, x0, config.force_pts, config.quad_pts, nearest, ϵ; μ=μ)
-    sp.lin_prob.b[1:end-6] .= reshape(sp.config.velocity, :)
+    @views sp.lin_prob.b[1:end-6] .= reshape(sp.config.velocity, :)
     sp.force_vals .= solve(sp.lin_prob, MKLLUFactorization())
 end
 
@@ -70,7 +66,7 @@ mutable struct DynamicSwimmingProblem <: Problem
 end
 
 function DynamicSwimmingProblem(
-    S::Swimmer, 
+    S::Swimmer;
     x0::SVector{3,T}=SVector(0., 0., 0.), 
     B::SMatrix{3,3,T}=I3, 
     t_final::T=20.,
@@ -83,9 +79,9 @@ function DynamicSwimmingProblem(
     b2_0 = [0., 1., 0.]
 
     function rhs!(dX, X, p, t)
-        X[4:6] .= X[4:6] ./ norm(X[4:6]) # prevent drift in basis normalisation
-        X[7:9] .= X[7:9] ./ norm(X[7:9])
-        move!(sp, SVector{3}(X[1:3]), SVector{3}(X[4:6]), SVector{3}(X[7:9]), t)
+        # X[4:6] .= X[4:6] ./ norm(X[4:6]) # prevent drift in basis normalisation
+        # X[7:9] .= X[7:9] ./ norm(X[7:9])
+        move_boundary!(sp, SVector{3}(X[1:3]), SVector{3}(X[4:6]), SVector{3}(X[7:9]), t)
         solve_problem!(sp)
 
         @views begin
@@ -94,8 +90,6 @@ function DynamicSwimmingProblem(
             dX[7:9] .= cross(sp.force_vals[end-2:end], X[7:9])
         end
     end
-
-    @show rhs!(zeros(9), [x0_0; b1_0; b2_0], nothing, 0.0)
 
     DynamicSwimmingProblem(
         sp,

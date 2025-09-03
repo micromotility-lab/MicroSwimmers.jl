@@ -1,5 +1,6 @@
 # Core structures & problems
-export FluidBoundary, update_boundary!, CellBody # , Flagellum, Swimmer, Problem
+export FluidBoundary, update_boundary!, move_boundary!
+export CellBody
 export Configuration
 
 # Bodies
