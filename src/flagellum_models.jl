@@ -71,6 +71,65 @@ function (m::PlanarFlagellum)(pts::Matrix{T}, velocity::Matrix{T}, t::T) where {
     end
 end
 
+function (m::PlanarFlagellum)(tube_pts::Matrix{T}, tube_vel::Matrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
+    N = size(tube_pts, 2) ÷ M
+    ds = 1 / (N - 1)
+    half_L_ds = 0.5 * m.L * ds
+
+    # Precompute circle angles
+    angles = range(0, 2π, length=M+1)[1:end-1]  # avoid duplication at 2π
+    cosα = cos.(angles)
+    sinα = sin.(angles)
+
+    # Initialise centerline position and velocity
+    x, y = zero(T), zero(T)
+    vx, vy = zero(T), zero(T)
+
+    s_prev = 0.0
+    sinθ_prev, cosθ_prev, ωθ₁sin_prev = get_sincosω(s_prev, t, m)
+
+    @inbounds for i in 1:N
+        s = (i - 1) * ds
+        sinθ, cosθ, ωθ₁sin = get_sincosω(s, t, m)
+
+        # Update centerline position (x, y)
+        if i > 1
+            dx = (cosθ_prev + cosθ) * half_L_ds
+            dy = (sinθ_prev + sinθ) * half_L_ds
+            x += dx
+            y += dy
+
+            # Update centerline velocity (vx, vy)
+            dvx = (ωθ₁sin_prev*sinθ_prev + ωθ₁sin*sinθ) * half_L_ds
+            dvy = -(ωθ₁sin_prev*cosθ_prev + ωθ₁sin*cosθ) * half_L_ds
+            vx += dvx
+            vy += dvy
+        end
+
+        # Frame vectors (fixed in the x-y plane)
+        normal  = SVector(-sinθ, cosθ, 0.0)
+        binorm  = SVector(0.0, 0.0, 1.0)
+        center  = SVector(x, y, 0.0)
+        v_center = SVector(vx, vy, 0.0)
+
+        # Angular velocity vector
+        ω_vec = ωθ₁sin * binorm  # binorm is z-hat
+
+        # Fill tube points and velocities
+        for j in 1:M
+            offset = radius * (cosα[j] * normal + sinα[j] * binorm)
+            idx = (i - 1) * M + j
+            tube_pts[:, idx] = center + offset
+            tube_vel[:, idx] = v_center + cross(ω_vec, offset)
+        end
+
+        # Save for next step
+        s_prev = s
+        sinθ_prev = sinθ
+        cosθ_prev = cosθ
+        ωθ₁sin_prev = ωθ₁sin
+    end
+end
 
 function (m::PlanarFlagellum)(tube_pts::Matrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
     N = size(tube_pts, 2) ÷ M
@@ -116,6 +175,13 @@ function (m::PlanarFlagellum)(tube_pts::Matrix{T}, M::Int, t::T; radius::T=0.01)
         sinθ_prev = sinθ
         cosθ_prev = cosθ
     end
+end
+
+(m::PlanarFlagellum)(points::NearestDiscretisation, t::T) where {T <: Number} = m.model(points.force_pts, points.velocity, t)
+function (m::PlanarFlagellum)(points::TubeFlagellumNearestDiscretisation, t::T) where {T <: Number}
+    @unpack force_pts, velocity, quad_pts, N_cs, Q_cs, radius = points
+    m(force_pts, velocity, N_cs, t, radius=radius)
+    m(quad_pts, Q_cs, t, radius=radius)
 end
 
 

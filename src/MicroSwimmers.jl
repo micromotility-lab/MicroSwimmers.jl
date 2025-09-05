@@ -18,6 +18,9 @@ include("cell_body.jl")
 include("flagellum_models.jl")
 include("swimmers.jl")
 include("problems.jl")
+include("trajectories.jl")
+include("forces_and_torques.jl")
+include("fluid.jl")
 include("exports.jl")
 
 end # module

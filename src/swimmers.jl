@@ -2,105 +2,66 @@ abstract type Swimmer <: FluidBoundary end
 
 function move_boundary!(S::Swimmer, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
     update_boundary!(S, t)
-    S.config.location = x0
-    S.config.orientation = B
+    S.points.location = x0
+    S.points.orientation = B
 end
 
-struct Flagellum{M <: FlagellumModel, T <: Number} <: Swimmer   # subtypes Swimmer for isolated flagella
+struct Flagellum{M <: FlagellumModel} <: Swimmer   # subtypes Swimmer for isolated flagella
     model::M
-    N::Int
-    Q::Int
-    config::Configuration{T}
-    ϵ::T
+    points::Discretisation
 end
 
-function Flagellum(; 
+function Flagellum( 
     model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
     N=23, 
+    Q=127; 
     location=SVector(0., 0., 0.),
     orientation=I3,
-    Q=127, 
-    ϵ=0.01
 )
-    f = Flagellum(
-        model,
-        N,
-        Q,
-        Configuration(location, orientation, zeros(3,N), zeros(3,N), zeros(3,Q), zeros(Int, Q)),
-        ϵ
+    points = NearestDiscretisation(
+        zeros(3,N), zeros(3,Q), zeros(Int, Q); 
+        location=location, orientation=orientation
     )
+    f = Flagellum(model, points)
+
     update_boundary!(f, 0.)
-    f.config.nearest .= nearest_neighbour(f.config.force_pts, f.config.quad_pts)
+    nearest_neighbour!(f.points)
     f
 end
 
-
-function update_boundary!(fl::Flagellum, t::T) where {T <: Number}
-    @unpack force_pts, quad_pts, velocity = fl.config
-    fl.model(force_pts, velocity, t)
-    fl.model(quad_pts, t)
-end
-
-
-mutable struct UniFlagellate{T <: Number} <: Swimmer
-    body::CellBody
-    flagellum::Flagellum
-    config::Configuration
-    ϵ::T
-end
-
-function UniFlagellate(
-    body::CellBody=SphericalBody(a=0.2, N=53, Q=253), 
-    flagellum::Flagellum=SymmetricFlagellum(N=27, Q=127, location=Vec3(0.2, 0., 0));
+function TubeFlagellum( 
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
+    N=23, 
+    N_cs=5,
+    Q=127,
+    Q_cs=5; 
     location=SVector(0., 0., 0.),
     orientation=I3,
-    ϵ=0.01
 )
-    nearest = [body.nearest; body.N .+ flagellum.nearest]
-    uf = UniFlagellate(
-        body,
-        flagellum,
-        Configuration(
-            location,
-            orientation,
-            zeros(3, size(body.config.force_pts, 2) + size(flagellum.config.force_pts,2)),
-            zeros(3, body.N + size(flagellum.config.velocity, 2)),
-            zeros(3, size(body.config.quad_pts, 2)  + size(flagellum.config.quad_pts, 2)),
-            nearest
-        ),
-        ϵ
+    points = TubeFlagellumNearestDiscretisation(N, N_cs, Q, Q_cs,
+        zeros(3,N*N_cs), zeros(3,Q*Q_cs); 
+        location=location, orientation=orientation
     )
+    f = Flagellum(model, points)
 
-    @views begin
-        uf.config.force_pts[:, 1:body.N] .= body.config.force_pts
-        uf.config.quad_pts[:,  1:body.Q] .= body.config.quad_pts
-    end
-    update_boundary!(uf, 0.)
-    uf
+    update_boundary!(f, 0.)
+    nearest_neighbour!(f.points)
+    f
 end
 
-function update_boundary!(uf::UniFlagellate, t::T) where {T <: Number}
-    update_boundary!(uf.flagellum, t)
-    
-    # unpack flagellum configuration
-    @unpack force_pts, quad_pts, velocity, location, orientation = uf.flagellum.config
-
-    # don't include the connection point which is already part of the body
-    @views begin
-        uf.config.force_pts[:, uf.body.N+1:end] .= location .+ orientation * force_pts
-        # uf.config.force_pts[:, uf.body.N+1:end] .= location .+ orientation * force_pts # [:,2:end]
-        uf.config.quad_pts[:,  uf.body.Q+1:end] .= location .+ orientation * quad_pts # [:, uf.flagellum.Q_cs+1:end]
-        uf.config.velocity[:,  uf.body.N+1:end] .= orientation * velocity # [:, 2:end]
-    end 
+function update_boundary!(f::Flagellum, t::T) where {T <: Number}
+    f.model(f.points, t)
+    # @unpack force_pts, quad_pts, velocity = f.points
+    # f.model(force_pts, velocity, t)
+    # f.model(quad_pts, t)
 end
 
-struct Flagellate{T <: Number, F <: Flagellum} <: Swimmer
+
+struct Flagellate{F <: Flagellum} <: Swimmer
     body::CellBody
     flagella::Vector{F}
-    config::Configuration
-    ϵ::T
-
-    force_pt_indices::Vector{Int} # locate the force points for each flagellum in the config structure
+    points::Discretisation
+    force_pt_indices::Vector{Int} # locate the force points for each flagellum in the points structure
     quad_pt_indices::Vector{Int}  # locate the quad points 
 end
 
@@ -109,62 +70,63 @@ function Flagellate(
     flagella::Vector{F};
     location=SVector(0., 0., 0.),
     orientation=I3,
-    ϵ=0.01
 ) where {F <: Flagellum}
-    force_pt_indices = [body.N + 1]
-    quad_pt_indices  = [body.Q + 1]
+    force_pt_indices = [body.points.N + 1]
+    quad_pt_indices  = [body.points.Q + 1]
     for i in eachindex(flagella[1:end-1])
-        push!(force_pt_indices, body.N + 1 + sum(flagella[j].N - 1 for j = 1:i))
-        push!(quad_pt_indices, body.Q + 1 + sum(flagella[j].Q - 1 for j in 1:i))
+        push!(force_pt_indices, body.points.N + 1 + sum(flagella[j].points.N - 1 for j = 1:i))
+        push!(quad_pt_indices, body.points.Q + 1 + sum(flagella[j].points.Q - 1 for j in 1:i))
     end
 
     flagella_nearest = []
     for (i, flagellum) in enumerate(flagella)
         if i == 1
-            append!(flagella_nearest, flagellum.config.nearest[2:end] .- 1)
+            append!(flagella_nearest, flagellum.points.nearest[2:end] .- 1)
         else
-            append!(flagella_nearest, flagellum.config.nearest[2:end] .- 1 .+ sum(f.N - 1 for f in flagella[1:i-1]))
+            append!(flagella_nearest, flagellum.points.nearest[2:end] .- 1 .+ sum(f.N - 1 for f in flagella[1:i-1]))
         end
     end
 
-    nearest = [body.config.nearest; body.N .+ flagella_nearest]
+    nearest = [body.points.nearest; body.points.N .+ flagella_nearest]
     
-    f = Flagellate(
-        body,
-        flagella,
-        Configuration(
-            location,
-            orientation,
-            zeros(3, body.N + sum(f.N - 1 for f in flagella)),
-            zeros(3, body.N + sum(f.N - 1 for f in flagella)),
-            zeros(3, body.Q + sum(f.Q - 1 for f in flagella)),
-            nearest
-        ),
-        ϵ,
-        force_pt_indices,
-        quad_pt_indices
+    points = NearestDiscretisation(
+        zeros(3, body.points.N + sum(f.points.N - 1 for f in flagella)),
+        zeros(3, body.points.Q + sum(f.points.Q - 1 for f in flagella)),
+        nearest;
+        location=location,
+        orientation=orientation
     )
 
+    flgt = Flagellate(body, flagella, points, force_pt_indices, quad_pt_indices)
+
     @views begin
-        f.config.force_pts[:, 1:body.N] .= body.config.force_pts
-        f.config.quad_pts[:,  1:body.Q] .= body.config.quad_pts
+        flgt.points.force_pts[:, 1:body.points.N] .= body.points.force_pts
+        flgt.points.quad_pts[:,  1:body.points.Q] .= body.points.quad_pts
     end
-    update_boundary!(f, 0.)
-    f
+    update_boundary!(flgt, 0.)
+    flgt
 end
 
-function update_boundary!(f::Flagellate{T}, t::T) where {T <: Number}
-    for (i, flagellum) in enumerate(f.flagella) 
+UniFlagellate(
+    body::CellBody,
+    flagellum::Flagellum;
+    location=SVector(0., 0., 0.),
+    orientation=I3,
+) = Flagellate(body, [flagellum]; location=location, orientation=orientation)
+
+
+function update_boundary!(flgt::Flagellate, t::T) where {T <: Number}
+    for (i, flagellum) in enumerate(flgt.flagella) 
         update_boundary!(flagellum, t)
     
-        f_start = f.force_pt_indices[i]
-        q_start = f.quad_pt_indices[i]
+        f_start = flgt.force_pt_indices[i]
+        q_start = flgt.quad_pt_indices[i]
         
-        @unpack force_pts, quad_pts, velocity, location, orientation = flagellum.config
+        @unpack force_pts, quad_pts, velocity, location, orientation = flagellum.points
         @views begin
-            f.config.force_pts[:, f_start:f_start + flagellum.N-2] .= location .+ orientation * force_pts[:,2:end]
-            f.config.quad_pts[:,  q_start:q_start + flagellum.Q-2] .= location .+ orientation * quad_pts[:,2:end]
-            f.config.velocity[:,  f_start:f_start + flagellum.N-2] .= orientation * velocity[:,2:end]
+            flgt.points.force_pts[:, f_start:f_start + flagellum.points.N-2] .= location .+ orientation * force_pts[:,2:end]
+            flgt.points.quad_pts[:,  q_start:q_start + flagellum.points.Q-2] .= location .+ orientation * quad_pts[:,2:end]
+            flgt.points.velocity[:,  f_start:f_start + flagellum.points.N-2] .= orientation * velocity[:,2:end]
         end 
     end
 end

@@ -1,3 +1,9 @@
+const I3 = @SMatrix [1.0 0 0; 0 1.0 0; 0 0 1.0]
+
+skew_symmetric_static(x::T) where{T} = @SMatrix [0.0   -x[3]   x[2];
+                                                 x[3]   0.0   -x[1];
+                                                -x[2]   x[1]   0.0]
+
 smooth_max(a, b, k) = log(exp(k*a) + exp(k*b)) / k
 
 # Cumulative trapezoid integral: returns I[i] = ∫_{x[1]}^{x[i]} y(s) ds
