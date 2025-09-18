@@ -1,31 +1,12 @@
-struct Trajectory{T <: Number}
-    t::Vector{T}
-    x::Vector{SVector{3,T}}
-    b1::Vector{SVector{3,T}}
-    b2::Vector{SVector{3,T}}
-    periodic::Bool
-end
-
-function Trajectory(prob::DynamicSwimmingProblem, periodic::Bool)
-    if isnothing(prob.sol)
-        solve_problem!(prob)
+function average_swimming_velocity(traj::Trajectory; periods=100)
+    if traj.periodic
+        continue_periodic_trajectory!(traj, periods)
     end
-    t = prob.sol.t
-    u = prob.sol.u
-
-    x  = [SVector{3}(u[i][1:3]) for i in eachindex(u)]
-    b1 = [SVector{3}(u[i][4:6]) for i in eachindex(u)]
-    b2 = [SVector{3}(u[i][7:9]) for i in eachindex(u)]
-    Trajectory(t, x, b1, b2, periodic)
-end
-
-function swimming_velocity(traj::Trajectory)
     (traj.x[end] - traj.x[1]) / (traj.t[end] - traj.t[1])
 end
 
 
-
-function continue_periodic_trajectory!(traj::Trajectory; N_periods::Int=10)
+function continue_periodic_trajectory!(traj::Trajectory, N_periods::Int=10)
     traj.periodic || error("Cannot continue a non-periodic trajectory")
 
     @unpack t, x, b1, b2 = traj

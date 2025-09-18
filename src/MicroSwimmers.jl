@@ -17,10 +17,12 @@ include("nearest.jl")
 include("cell_body.jl")
 include("flagellum_models.jl")
 include("swimmers.jl")
+include("flagella.jl")
 include("problems.jl")
 include("trajectories.jl")
 include("forces_and_torques.jl")
 include("fluid.jl")
+include("organisms.jl")
 include("exports.jl")
 
 end # module

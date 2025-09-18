@@ -10,10 +10,10 @@ function regularised_stokeslet!(S::StaticMatrix{3,3,T}, R::StaticVector{3,T}; ep
 end
 
 function resistance_matrix!(
-    A::Matrix{T},
-    force_pts::Matrix{T},
-    quad_pts::Matrix{T},
-    nearest::Vector{Int},
+    A::AbstractMatrix{T},
+    force_pts::AbstractMatrix{T},
+    quad_pts::AbstractMatrix{T},
+    nearest::AbstractVector{Int},
     eps::T;
     μ::T=one(T),
 ) where {T <: Number}
@@ -36,6 +36,16 @@ function resistance_matrix!(
     A ./= (-T(8) * T(π) * μ)
 end
 
+function resistance_matrix!(
+    A::AbstractMatrix{T},
+    force_pts::AbstractVector{T},
+    quad_pts::AbstractMatrix{T},
+    nearest::AbstractVector{Int},
+    eps::T;
+    μ::T=one(T),
+) where {T <: Number}   
+    resistance_matrix!(A, reshape(force_pts, 3, 1), quad_pts, nearest, eps; μ=μ)
+end
 
 function swimming_matrix!(
     A::Matrix{T}, 

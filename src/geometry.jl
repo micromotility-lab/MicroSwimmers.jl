@@ -1,6 +1,5 @@
 ### Ellipsoids
 
-
 function fibonacci_ellipsoid(a::Float64, b::Float64, c::Float64, num_points::Int)
     points = Array{Float64}(undef, 3, num_points)
     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1
@@ -22,4 +21,15 @@ end
 
 is_inside_ellipsoid(x, center, radii) = sum(((x .- center) ./ radii) .^ 2) <= 1
 
+# Needs NonlinearSolve so I'm not sure whether to include just for this
+#
+# function ellipsoid_intersection(;x0=[-0.2, 0.05], p=[(0., 0.), (0.2, 0.1), (0., .1), (0.2 ,0.1)])
+#     function f!(res, u, p)
+#         X, A, Y, B = p
+#         res .= [sum(((u .- X) ./ A).^2) - 1.,  sum(((u .- Y) ./ B).^2) - 1.]
+#     end
+#     prob = NonlinearProblem(f!, x0, p)
+#     sol = solve(prob)
+#     [sol[1]; 0.; sol[2]]
+# end
 

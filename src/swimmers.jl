@@ -1,9 +1,14 @@
 abstract type Swimmer <: FluidBoundary end
 
-function move_boundary!(S::Swimmer, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
+function move_boundary!(S::Swimmer, x0::SVector{3,T}=SVector(0.,0.,0.), B::SMatrix{3,3,T}=I3, t::T=0.0) where {T <: Number}
     update_boundary!(S, t)
     S.points.location = x0
     S.points.orientation = B
+end
+
+function move_boundary!(S::Swimmer, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3, T}, t::T) where {T <: Number}
+    B = hcat(b1, b2, cross(b1, b2))
+    move_boundary!(S, x0, B, t)
 end
 
 struct Flagellum{M <: FlagellumModel} <: Swimmer   # subtypes Swimmer for isolated flagella
@@ -11,50 +16,7 @@ struct Flagellum{M <: FlagellumModel} <: Swimmer   # subtypes Swimmer for isolat
     points::Discretisation
 end
 
-function Flagellum( 
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
-    N=23, 
-    Q=127; 
-    location=SVector(0., 0., 0.),
-    orientation=I3,
-)
-    points = NearestDiscretisation(
-        zeros(3,N), zeros(3,Q), zeros(Int, Q); 
-        location=location, orientation=orientation
-    )
-    f = Flagellum(model, points)
-
-    update_boundary!(f, 0.)
-    nearest_neighbour!(f.points)
-    f
-end
-
-function TubeFlagellum( 
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
-    N=23, 
-    N_cs=5,
-    Q=127,
-    Q_cs=5; 
-    location=SVector(0., 0., 0.),
-    orientation=I3,
-)
-    points = TubeFlagellumNearestDiscretisation(N, N_cs, Q, Q_cs,
-        zeros(3,N*N_cs), zeros(3,Q*Q_cs); 
-        location=location, orientation=orientation
-    )
-    f = Flagellum(model, points)
-
-    update_boundary!(f, 0.)
-    nearest_neighbour!(f.points)
-    f
-end
-
-function update_boundary!(f::Flagellum, t::T) where {T <: Number}
-    f.model(f.points, t)
-    # @unpack force_pts, quad_pts, velocity = f.points
-    # f.model(force_pts, velocity, t)
-    # f.model(quad_pts, t)
-end
+update_boundary!(f::Flagellum, t::T) where {T <: Number} = f.model(f.points, t)
 
 
 struct Flagellate{F <: Flagellum} <: Swimmer
@@ -74,24 +36,24 @@ function Flagellate(
     force_pt_indices = [body.points.N + 1]
     quad_pt_indices  = [body.points.Q + 1]
     for i in eachindex(flagella[1:end-1])
-        push!(force_pt_indices, body.points.N + 1 + sum(flagella[j].points.N - 1 for j = 1:i))
-        push!(quad_pt_indices, body.points.Q + 1 + sum(flagella[j].points.Q - 1 for j in 1:i))
+        push!(force_pt_indices, body.points.N + 1 + sum(flagella[j].points.N  for j = 1:i))
+        push!(quad_pt_indices, body.points.Q + 1 + sum(flagella[j].points.Q for j in 1:i))
     end
 
     flagella_nearest = []
     for (i, flagellum) in enumerate(flagella)
         if i == 1
-            append!(flagella_nearest, flagellum.points.nearest[2:end] .- 1)
+            append!(flagella_nearest, flagellum.points.nearest)
         else
-            append!(flagella_nearest, flagellum.points.nearest[2:end] .- 1 .+ sum(f.N - 1 for f in flagella[1:i-1]))
+            append!(flagella_nearest, flagellum.points.nearest .+ sum(f.points.N for f in flagella[1:i-1]))
         end
     end
 
     nearest = [body.points.nearest; body.points.N .+ flagella_nearest]
     
     points = NearestDiscretisation(
-        zeros(3, body.points.N + sum(f.points.N - 1 for f in flagella)),
-        zeros(3, body.points.Q + sum(f.points.Q - 1 for f in flagella)),
+        zeros(3, body.points.N + sum(f.points.N for f in flagella)),
+        zeros(3, body.points.Q + sum(f.points.Q for f in flagella)),
         nearest;
         location=location,
         orientation=orientation
@@ -103,7 +65,7 @@ function Flagellate(
         flgt.points.force_pts[:, 1:body.points.N] .= body.points.force_pts
         flgt.points.quad_pts[:,  1:body.points.Q] .= body.points.quad_pts
     end
-    update_boundary!(flgt, 0.)
+    # update_boundary!(flgt, 0.)
     flgt
 end
 
@@ -124,9 +86,9 @@ function update_boundary!(flgt::Flagellate, t::T) where {T <: Number}
         
         @unpack force_pts, quad_pts, velocity, location, orientation = flagellum.points
         @views begin
-            flgt.points.force_pts[:, f_start:f_start + flagellum.points.N-2] .= location .+ orientation * force_pts[:,2:end]
-            flgt.points.quad_pts[:,  q_start:q_start + flagellum.points.Q-2] .= location .+ orientation * quad_pts[:,2:end]
-            flgt.points.velocity[:,  f_start:f_start + flagellum.points.N-2] .= orientation * velocity[:,2:end]
+            flgt.points.force_pts[:, f_start:f_start + flagellum.points.N-1] .= location .+ orientation * force_pts
+            flgt.points.quad_pts[:,  q_start:q_start + flagellum.points.Q-1] .= location .+ orientation * quad_pts
+            flgt.points.velocity[:,  f_start:f_start + flagellum.points.N-1] .= orientation * velocity
         end 
     end
 end

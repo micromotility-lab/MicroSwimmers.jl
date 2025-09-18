@@ -35,11 +35,50 @@ function SwimmingProblem(
     sp
 end
 
-function check_solved!(prob)
+function check_solved!(prob::SwimmingProblem)
     if isnothing(prob.force_vals)
+        @info "Solving swimming problem"
         solve_problem!(prob)
     end
 end
+
+get_force_pts(prob::SwimmingProblem) = [SVector{3}(pt) for pt in eachcol(prob.points.force_pts)]
+
+
+function get_forces(prob::SwimmingProblem)
+    check_solved!(prob)
+    force_vectors = reshape(prob.force_vals[1:end-6], 3, :)
+    [SVector{3}(f) for f in eachcol(force_vectors)]
+end
+
+
+
+function get_U(prob::SwimmingProblem)
+    check_solved!(prob)
+    SVector{3}(prob.force_vals[end-5:end-3])
+end
+
+function get_Ω(prob::SwimmingProblem)
+    check_solved!(prob)
+    SVector{3}(prob.force_vals[end-2:end])
+end
+
+# This gets the total velocity including rigid body dynamics at the force points
+function get_velocities(prob::SwimmingProblem)
+    U = get_U(prob)
+    Ω = get_Ω(prob)
+    
+    [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Ω), get_force_pts(prob))
+end
+
+function update_boundary!(prob::SwimmingProblem, t::T) where {T <: Number}
+    update_boundary!(prob.swimmer, t)
+    @views begin
+        prob.points.force_pts .= prob.swimmer.points.force_pts
+        prob.points.velocity  .= prob.swimmer.points.velocity
+        prob.points.quad_pts  .= prob.swimmer.points.quad_pts
+    end
+end 
 
 function move_boundary!(sp::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::T) where {T <: Number}
     move_boundary!(sp.swimmer, x0, B, t)
@@ -72,13 +111,21 @@ function solve_problem!(sp::SwimmingProblem)
     sp.force_vals = solve(sp.lin_prob, MKLLUFactorization())
 end
 
-mutable struct DynamicSwimmingProblem <: Problem
-    swimming_problem::SwimmingProblem
-    ode_prob::ODEProblem
-    sol::Union{Nothing, ODESolution}
+struct Trajectory{T <: Number}
+    t::Vector{T}
+    x::Vector{SVector{3,T}}
+    b1::Vector{SVector{3,T}}
+    b2::Vector{SVector{3,T}}
+    periodic::Bool
 end
 
-function DynamicSwimmingProblem(
+mutable struct SwimmingTrajectoryProblem <: Problem
+    swimming_problem::SwimmingProblem
+    ode_prob::ODEProblem
+    traj::Union{Nothing, Trajectory}
+end
+
+function SwimmingTrajectoryProblem(
     S::Swimmer;
     x0::SVector{3,T}=SVector(0., 0., 0.), 
     B::SMatrix{3,3,T}=I3, 
@@ -87,34 +134,165 @@ function DynamicSwimmingProblem(
     eps=0.01,
     mu=1.
 ) where {T <: Number} 
-    sp = SwimmingProblem(S; x0=x0, B=B, eps=eps, mu=mu)
+    sprob = SwimmingProblem(S; x0=x0, B=B, eps=eps, mu=mu)
 
     x0_0 = zeros(3)
     b1_0 = [1., 0., 0.]
     b2_0 = [0., 1., 0.]
 
     function rhs!(dX, X, p, t)
-        # X[4:6] .= X[4:6] ./ norm(X[4:6]) # prevent drift in basis normalisation
-        # X[7:9] .= X[7:9] ./ norm(X[7:9])
-        move_boundary!(sp, SVector{3}(X[1:3]), SVector{3}(X[4:6]), SVector{3}(X[7:9]), t)
-        solve_problem!(sp)
+        move_boundary!(sprob, SVector{3}(X[1:3]), SVector{3}(X[4:6]), SVector{3}(X[7:9]), t)
+        solve_problem!(sprob)
+        Ω = get_Ω(sprob)
 
         @views begin
-            dX[1:3] .= sp.force_vals[end-5:end-3]
-            dX[4:6] .= cross(sp.force_vals[end-2:end], X[4:6])
-            dX[7:9] .= cross(sp.force_vals[end-2:end], X[7:9])
+            dX[1:3] .= get_U(sprob)
+            dX[4:6] .= cross(Ω, X[4:6])
+            dX[7:9] .= cross(Ω, X[7:9])
         end
     end
 
-    DynamicSwimmingProblem(
-        sp,
+    SwimmingTrajectoryProblem(
+        sprob,
         ODEProblem(rhs!, [x0_0; b1_0; b2_0], (0.0, t_final), saveat=saveat),
         nothing
     )
 end
 
+function solve_problem!(prob::SwimmingTrajectoryProblem; method=Tsit5(), periodic=false)
+    sol = solve(prob.ode_prob, method)
+    u = sol.u
 
-function solve_problem!(dsp::DynamicSwimmingProblem; method=Tsit5())
-    dsp.sol = solve(dsp.ode_prob, method)
+    x  = [SVector{3}(u[i][1:3]) for i in eachindex(u)]
+    b1 = [SVector{3}(u[i][4:6]) for i in eachindex(u)]
+    b2 = [SVector{3}(u[i][7:9]) for i in eachindex(u)]
+    prob.traj = Trajectory(sol.t, x, b1, b2, periodic)
+end
+
+function check_solved!(prob::SwimmingTrajectoryProblem)
+    if isnothing(prob.traj)
+        @info "Solving swimming trajectory problem"
+        solve_problem!(prob)
+    end
+end
+
+mutable struct ResistanceProblem{T <: Number} <: Problem
+    swimmer::Swimmer
+    points::Discretisation
+    eps::T   # regularisation parameter
+    mu::T    # viscosity
+
+    lin_prob::LinearProblem
+    force_vals::Union{Nothing, Vector{T}}
+    wall::Bool
+end
+
+
+function ResistanceProblem(
+    swimmer::Swimmer;
+    eps::T=0.01,
+    mu::T=1.,
+    wall=false
+) where {T <: Number}
+
+    @unpack N, Q, force_pts, quad_pts, velocity, nearest, location, orientation = swimmer.points
+
+    points = NearestDiscretisation(
+        N, Q,
+        SVector(0., 0., 0.), I3,
+        zeros(T, size(force_pts)),
+        zeros(T, size(force_pts)),
+        zeros(T, size(quad_pts)),
+        nearest
+    )
+
+    prob = ResistanceProblem(
+        swimmer, points, eps, mu,
+        LinearProblem(zeros(T, 3N, 3N), zeros(T, 3N)),
+        nothing,
+        wall
+    )
+
+    update_boundary!(prob, 0.0)
+    prob
+end
+
+function update_boundary!(prob::ResistanceProblem, t::T) where {T <: Number}
+    update_boundary!(prob.swimmer, t)
+    @unpack location, orientation, force_pts, quad_pts, velocity = prob.swimmer.points
+
+    @views begin
+        prob.points.force_pts .= location .+ orientation * force_pts
+        prob.points.velocity  .= orientation * velocity
+        prob.points.quad_pts  .= location .+ orientation * quad_pts
+    end
+end
+
+function solve_problem!(prob::ResistanceProblem)
+    @unpack lin_prob, points, swimmer, eps, mu = prob
+    resistance_matrix!(
+        lin_prob.A, 
+        points.force_pts, 
+        points.quad_pts,
+        points.nearest,
+        eps;
+        μ=mu,  
+    )
+    lin_prob.b .= reshape(points.velocity, :)
+    prob.force_vals = solve(lin_prob, MKLLUFactorization())
+end
+
+mutable struct ParticleTrajectoryProblem{T <: Number} <: Problem
+    resistance_problem::ResistanceProblem{T}
+    ode_prob::ODEProblem
+    t::Union{Nothing, Vector{T}}
+    trajectories::Union{Nothing, Matrix{T}}
+end
+
+function ParticleTrajectoryProblem(
+    swimmer::Swimmer;
+    num_particles=36,
+    x=-5.,
+    ys=range(-4., 4., 6),
+    zs=range(0.2, 3.2, 6),
+    t_final::T=20.,
+    saveat::T=0.05,
+    eps=0.01,
+    mu=1.
+) where {T <: Number} 
+    rprob = ResistanceProblem(swimmer; eps=eps, mu=mu)
+    A = zeros(3*num_particles, 3rprob.points.N)
+
+    function rhs!(dX, X, p, t)
+        update_boundary!(rprob, t)
+        solve_problem!(rprob)
+
+        resistance_matrix!(
+            A, 
+            reshape(X, 3, num_particles), 
+            rprob.points.quad_pts, 
+            rprob.points.nearest, 
+            eps;
+            μ=mu
+        )
+        dX .= A * rprob.force_vals
+    end
+
+    tspan = (0.0, t_final)
+
+    x0 = reduce(vcat, [[x, y, z] for y in ys, z in zs])
+
+    ParticleTrajectoryProblem(
+        rprob,
+        ODEProblem(rhs!, x0, tspan, saveat=saveat),
+        nothing,
+        nothing
+    )
+end
+
+function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
+    sol = solve(prob.ode_prob, method)
+    prob.t = sol.t
+    prob.trajectories = reduce(hcat, sol.u)
 end
 
