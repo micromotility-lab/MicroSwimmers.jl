@@ -36,17 +36,20 @@ end
 
 
 function TubeFlagellum( 
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π),
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π, 0.0),
     N=23, 
     N_cs=5,
     Q=127,
     Q_cs=5; 
     location=SVector(0., 0., 0.),
     orientation=I3,
+    radius=0.1
 )
     points = TubeFlagellumNearestDiscretisation(
         N, N_cs, Q, Q_cs; 
-        location=location, orientation=orientation
+        location=SVector{3}(location), 
+        orientation=orientation,
+        radius=radius
     )
     f = Flagellum(model, points)
 
@@ -64,7 +67,7 @@ function LineTubeFlagellum(
     orientation=I3,
 )
     points = LineTubeFlagellumNearestDiscretisation(N, Q, Q_cs; 
-        location=location, orientation=orientation
+        location=SVector{3}(location), orientation=orientation
     )
     f = Flagellum(model, points)
 

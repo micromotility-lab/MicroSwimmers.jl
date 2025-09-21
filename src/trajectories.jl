@@ -1,7 +1,4 @@
-function average_swimming_velocity(traj::Trajectory; periods=100)
-    if traj.periodic
-        continue_periodic_trajectory!(traj, periods)
-    end
+function average_swimming_velocity(traj::Trajectory )
     (traj.x[end] - traj.x[1]) / (traj.t[end] - traj.t[1])
 end
 
