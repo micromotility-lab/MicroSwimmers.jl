@@ -118,7 +118,7 @@ function TubeFlagellumNearestDiscretisation(
     radius=0.01
 )
 
-    points = NearestDiscretisation(N*N_cs, Q*Q_cs, location=location, orientation=orientation)
+    points = NearestDiscretisation(N*N_cs, Q*Q_cs, location=SVector{3}(location), orientation=orientation)
     TubeFlagellumNearestDiscretisation(points, N_cs, Q_cs, radius)
 end
 
@@ -149,7 +149,7 @@ function LineTubeFlagellumNearestDiscretisation(
     radius=0.01
 )
 
-    points = NearestDiscretisation(N, Q*Q_cs, location=location, orientation=orientation)
+    points = NearestDiscretisation(N, Q*Q_cs, location=SVector{3}(location), orientation=orientation)
     LineTubeFlagellumNearestDiscretisation(points, Q_cs, radius)
 end
 
