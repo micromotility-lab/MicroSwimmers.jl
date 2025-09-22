@@ -11,14 +11,14 @@ mutable struct NearestDiscretisation{T <: Number} <: Discretisation
     nearest::Vector{Int}            # length Q
 end
 
-NearestDiscretisation(N::Int, Q::Int; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
+NearestDiscretisation(N::Int, Q::Int; location::SVector{3, T}=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
     N,
     Q,
     location,
     orientation,
-    zeros(3, N),
-    zeros(3, N),
-    zeros(3, Q),
+    zeros(T, 3, N),
+    zeros(T, 3, N),
+    zeros(T, 3, Q),
     zeros(Int, Q)
 )
 

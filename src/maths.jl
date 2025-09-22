@@ -14,6 +14,20 @@ function rotation_matrix(axis::Vector{T}, angle::T) where T
     ]
 end
 
+function rotation_matrix(axis::Vector{Float64}, angle::T) where T
+    axis = normalize(axis)  # Ensure it's a unit vector
+    x, y, z = axis
+    c = cos(angle)
+    s = sin(angle)
+    C = 1 - c
+
+    @SMatrix [
+        c + x^2*C     x*y*C - z*s   x*z*C + y*s;
+        y*x*C + z*s   c + y^2*C     y*z*C - x*s;
+        z*x*C - y*s   z*y*C + x*s   c + z^2*C
+    ]
+end
+
 skew_symmetric_static(x::T) where{T} = @SMatrix [0.0   -x[3]   x[2];
                                                  x[3]   0.0   -x[1];
                                                 -x[2]   x[1]   0.0]
