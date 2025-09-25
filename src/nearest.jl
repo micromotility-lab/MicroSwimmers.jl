@@ -22,6 +22,22 @@ NearestDiscretisation(N::Int, Q::Int; location::SVector{3, T}=SVector(0.,0.,0.),
     zeros(Int, Q)
 )
 
+function NearestDiscretisation(::Type{T}, 
+    N::Int, Q::Int; 
+    location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I)
+) where {T <: Number}
+    NearestDiscretisation(
+        N,
+        Q,
+        location,
+        orientation,
+        zeros(T, 3, N),
+        zeros(T, 3, N),
+        zeros(T, 3, Q),
+        zeros(Int, Q)
+    )
+end
+
 NearestDiscretisation(force_pts, quad_pts; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
     size(force_pts, 2),
     size(quad_pts, 2),

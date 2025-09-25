@@ -94,7 +94,7 @@ function swimming_matrix!(
             A[end-6+d, 3n-3+d] += one(T)
         end
         
-        rq = SVector{3,Float64}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
+        rq = SVector{3,T}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
         Kq = skew_symmetric_static(rq)
         @inbounds for p in 1:3, q in 1:3
             A[end-3+p, 3n-3+q] += Kq[p,q]

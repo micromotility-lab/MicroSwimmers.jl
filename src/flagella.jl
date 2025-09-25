@@ -1,4 +1,4 @@
-function Flagellum( 
+function Flagellum(
     model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
     N=23, 
     Q=127; 
@@ -9,6 +9,23 @@ function Flagellum(
     
     f = Flagellum(model, points)
     update_boundary!(f, 0.)
+    nearest_neighbour!(f.points)
+    f
+end
+
+function Flagellum(::Type{T},
+    model,
+    N, 
+    Q; 
+    location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I)
+) where {T <: Number}
+    points = NearestDiscretisation(
+        T, N, Q; 
+        location=SVector{3,T}(location), orientation=SMatrix{3,3,T}(orientation)
+    )
+    
+    f = Flagellum(model, points)
+    update_boundary!(f, T(0.0))
     nearest_neighbour!(f.points)
     f
 end

@@ -33,6 +33,10 @@ function Flagellate(
     location=SVector(0., 0., 0.),
     orientation=I3,
 ) where {F <: Flagellum}
+    T = eltype(flagella[1].points.force_pts)
+    location = SVector{3,T}(location)
+    orientation = SMatrix{3,3,T}(orientation)
+
     force_pt_indices = [body.points.N + 1]
     quad_pt_indices  = [body.points.Q + 1]
     for i in eachindex(flagella[1:end-1])
@@ -52,8 +56,8 @@ function Flagellate(
     nearest = [body.points.nearest; body.points.N .+ flagella_nearest]
     
     points = NearestDiscretisation(
-        zeros(3, body.points.N + sum(f.points.N for f in flagella)),
-        zeros(3, body.points.Q + sum(f.points.Q for f in flagella)),
+        zeros(T, 3, body.points.N + sum(f.points.N for f in flagella)),
+        zeros(T, 3, body.points.Q + sum(f.points.Q for f in flagella)),
         nearest;
         location=location,
         orientation=orientation
@@ -65,7 +69,8 @@ function Flagellate(
         flgt.points.force_pts[:, 1:body.points.N] .= body.points.force_pts
         flgt.points.quad_pts[:,  1:body.points.Q] .= body.points.quad_pts
     end
-    # update_boundary!(flgt, 0.)
+
+    update_boundary!(flgt, zero(T))
     flgt
 end
 

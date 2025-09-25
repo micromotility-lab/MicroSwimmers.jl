@@ -51,17 +51,18 @@ end
 end
 
 
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
+function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::Number) where {T <: Number}
+    tT = T(t)
     N = size(points,2)
-    ds = 1/(N-1)
+    ds = T(1/(N-1))
     half_L_ds = 0.5*m.L*ds
 
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
+    s_prev = T(0.0)
+    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, tT, m)
     
     @inbounds for i in 2:N
         s = s_prev + ds
-        sinθ, cosθ = orientation_integrands(s, t, m)
+        sinθ, cosθ = orientation_integrands(s, tT, m)
 
         points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
         points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
@@ -73,17 +74,18 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Numbe
 end
 
 
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T) where {T <: Number}
+function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::Number) where {T <: Number}
+    tT = T(t) # promote t for autodiff
     N = size(points,2)
-    ds = 1/(N-1)
+    ds = T(1/(N-1))
     half_L_ds = 0.5*m.L*ds
 
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, t, m)  
+    s_prev = T(0.0)
+    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, tT, m)  
     
     @inbounds for i in 2:N
         s = s_prev + ds
-        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, t, m)  
+        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, tT, m)  
 
         points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
         points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds

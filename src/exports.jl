@@ -23,10 +23,12 @@ export ResistanceProblem, ParticleTrajectoryProblem
 export solve_problem! #, total_body_force_and_torque, get_velocity_function
 
 # Trajectories
-export Trajectory, average_swimming_velocity, continue_periodic_trajectory!
+export Trajectory, average_swimming_velocity, continue_periodic_trajectory!, continue_periodic_trajectory
 
 export total_force, total_torque, total_power, total_force_and_torque, stresslet_tensor, average_stresslet_tensor, total_energy_dissipated
 export VelocityField, get_velocity_function, TimeAveragedVelocityField
 
 # Organisms
 export Chlamydomonas
+
+export get_sol!

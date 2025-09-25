@@ -13,16 +13,17 @@ function EllipsoidBody(
     c::T,
     N::Int,
     Q::Int; 
-    location::SVector{3,T}=SVector{3,T}(zero(T),zero(T),zero(T)), 
-    orientation::SMatrix{3,3,T}=SMatrix{3,3,T}(I)
+    location=SVector{3,T}(zero(T),zero(T),zero(T)), 
+    orientation=SMatrix{3,3,T}(I)
 ) where {T <: Number}
 
     force_pts = fibonacci_ellipsoid(a,b,c,N)
     quad_pts = fibonacci_ellipsoid(a,b,c,Q)
 
-    points = NearestDiscretisation(force_pts, quad_pts; location=location, orientation=orientation)
+    points = NearestDiscretisation(force_pts, quad_pts; location=SVector{3,T}(location), orientation=SMatrix{3,3,T}(orientation)    )
     EllipsoidBody(a, b, c, points)
 end
+
 
 SphericalBody(;a=0.2, N=27, Q=99, ϵ=0.01) = EllipsoidBody(a, a, a, N, Q)
 

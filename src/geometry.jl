@@ -1,7 +1,7 @@
 ### Ellipsoids
 
-function fibonacci_ellipsoid(a::Float64, b::Float64, c::Float64, num_points::Int)
-    points = Array{Float64}(undef, 3, num_points)
+function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Number}
+    points = Array{T}(undef, 3, num_points)
     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1
     ga = 2π * phi  
 
