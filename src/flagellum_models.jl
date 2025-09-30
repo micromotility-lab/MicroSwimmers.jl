@@ -24,10 +24,53 @@ function(m::FlagellumModel)(points::VanedFlagellumNearestDiscretisation, t::T) w
     m(quad_pts, Q_f, Q_v, Q_start, Q_height, t)
 end
 
+"""Flagellum with a vane (only extends in the z direction currently)"""
+function (m::FlagellumModel)(
+    points::AbstractMatrix{T},
+    N_f::Int, N_v::Int, start::Int, height::Int, 
+    t::T
+) where {T <: Number}
+    f_points = @view points[:,1:N_f]
+    m(f_points, t)  # Fill flagellum points and velocities
+    # Fill vane
+    for i in 1:height
+        cstart = N_f + (i-1)*N_v + 1
+        cend   = N_f + i*N_v
+        
+        @views begin
+            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
+            points[3, cstart:cend]   .= -i*m.L / N_f
+        end
+    end
+end
+
+function (m::FlagellumModel)(
+    points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, 
+    N_f::Int, N_v::Int, start::Int, height::Int, 
+    t::T
+) where {T <: Number}
+    f_points = @view points[:,1:N_f]
+    f_velocities = @view velocities[:,1:N_f]
+    m(f_points, f_velocities, t)  # Fill flagellum points and velocities
+    
+    # Fill vane
+    for i in 1:height
+        cstart = N_f + (i-1)*N_v + 1
+        cend   = N_f + i*N_v
+        
+        @views begin
+            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
+            points[3, cstart:cend]   .= -i*m.L / N_f
+            velocities[1:2, cstart:cend]  .= velocities[1:2, start:start+N_v-1]
+        end
+    end
+end
+
+
 
 ## 2D flagella models
 
-struct PlanarFlagellum{T <: Number} <: FlagellumModel
+mutable struct PlanarFlagellum{T <: Number} <: FlagellumModel
     L::T
     C::T
     R₀::T
@@ -51,18 +94,17 @@ end
 end
 
 
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::Number) where {T <: Number}
-    tT = T(t)
+function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
     N = size(points,2)
     ds = T(1/(N-1))
     half_L_ds = 0.5*m.L*ds
 
     s_prev = T(0.0)
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, tT, m)
+    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
     
     @inbounds for i in 2:N
         s = s_prev + ds
-        sinθ, cosθ = orientation_integrands(s, tT, m)
+        sinθ, cosθ = orientation_integrands(s, t, m)
 
         points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
         points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
@@ -74,18 +116,18 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::Number) where {T <: 
 end
 
 
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::Number) where {T <: Number}
-    tT = T(t) # promote t for autodiff
+function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T) where {T <: Number}
+    # tT = T(t) # promote t for autodiff
     N = size(points,2)
     ds = T(1/(N-1))
     half_L_ds = 0.5*m.L*ds
 
     s_prev = T(0.0)
-    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, tT, m)  
+    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, t, m)  
     
     @inbounds for i in 2:N
         s = s_prev + ds
-        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, tT, m)  
+        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, t, m)  
 
         points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
         points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
@@ -205,53 +247,11 @@ function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, tube_vel::Abstract
     end
 end
 
-"""Flagellum with a vane"""
-function (m::FlagellumModel)(
-    points::AbstractMatrix{T},
-    N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::T
-) where {T <: Number}
-    f_points = @view points[:,1:N_f]
-    m(f_points, t)  # Fill flagellum points and velocities
-    # Fill vane
-    for i in 1:height
-        cstart = N_f + (i-1)*N_v + 1
-        cend   = N_f + i*N_v
-        
-        @views begin
-            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
-            points[3, cstart:cend]   .= -i*m.L / N_f
-        end
-    end
-end
-
-function (m::FlagellumModel)(
-    points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, 
-    N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::T
-) where {T <: Number}
-    f_points = @view points[:,1:N_f]
-    f_velocities = @view velocities[:,1:N_f]
-    m(f_points, f_velocities, t)  # Fill flagellum points and velocities
-    
-    # Fill vane
-    for i in 1:height
-        cstart = N_f + (i-1)*N_v + 1
-        cend   = N_f + i*N_v
-        
-        @views begin
-            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
-            points[3, cstart:cend]   .= -i*m.L / N_f
-            velocities[1:2, cstart:cend]  .= velocities[1:2, start:start+N_v-1]
-        end
-    end
-end
-
 
 
 ## 3D flagella models
 
-struct QuasiPlanarFlagellum{T <: Number} <: FlagellumModel
+mutable struct QuasiPlanarFlagellum{T <: Number} <: FlagellumModel
     L::T      # Flagellum length
     ω::T      # Beat frequency
     A::T     # Amplitude
@@ -323,7 +323,7 @@ end
 
 # Three dimensional flagellum based on the model used in Suzuki-Tellier et. al 2024
 
-struct ThreeDimensionalFlagellum{T <: Number}
+mutable struct ThreeDimensionalFlagellum{T <: Number}
     ## Waveform parameters
     L::Float64      # Flagellum length
     fᵩ::Float64      # Azimuthal beat frequency

@@ -75,6 +75,28 @@ function TubeFlagellum(
     f
 end
 
+function TubeFlagellum(::Type{T}, 
+    model,  
+    N, 
+    N_cs,
+    Q,
+    Q_cs; 
+    location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I),
+    radius=T(0.1)
+) where {T <: Number}
+    points = TubeFlagellumNearestDiscretisation(
+        N, N_cs, Q, Q_cs; 
+        location=SVector{3, T}(location), 
+        orientation=SMatrix{3,3,T}(orientation),
+        radius=radius
+    )
+    f = Flagellum(model, points)
+
+    update_boundary!(f, zero(T))
+    nearest_neighbour!(f.points)
+    f
+end
+
 function LineTubeFlagellum( 
     model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, -2π, 2π, 0.0),
     N=23, 

@@ -1,4 +1,4 @@
-function average_swimming_velocity(traj::Trajectory )
+function average_swimming_velocity(traj::Trajectory)
     (traj.x[end] - traj.x[1]) / (traj.t[end] - traj.t[1])
 end
 
@@ -50,7 +50,7 @@ end
 #     end
 # end
 
-function continue_periodic_trajectory(traj::Trajectory; N_periods=10)
+function continue_periodic_trajectory(traj::Trajectory, N_periods=10)
     T = eltype(traj.t)
     new_ts = T[]
     new_xs = SVector{3,T}[]
@@ -64,7 +64,6 @@ function continue_periodic_trajectory(traj::Trajectory; N_periods=10)
 
     for i in 1:N_periods-1
         B = hcat(new_b1s[end], new_b2s[end], cross(new_b1s[end], new_b2s[end]))
-        @info "" B
         new_t = traj.t .+ traj.t[end]*i
         new_x = [B * x for x in traj.x] .+ Ref(new_xs[end])
         # @info "" new_x new_xs[end]

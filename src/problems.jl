@@ -170,7 +170,7 @@ function SwimmingTrajectoryProblem(
 
     SwimmingTrajectoryProblem(
         sprob,
-        ODEProblem(rhs, X0, (0.0, t_final), saveat=saveat),
+        ODEProblem(rhs, X0, (T(0), T(t_final)), saveat=T(saveat)),
         nothing
     )
 end

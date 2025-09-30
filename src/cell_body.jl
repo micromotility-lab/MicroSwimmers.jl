@@ -20,7 +20,7 @@ function EllipsoidBody(
     force_pts = fibonacci_ellipsoid(a,b,c,N)
     quad_pts = fibonacci_ellipsoid(a,b,c,Q)
 
-    points = NearestDiscretisation(force_pts, quad_pts; location=SVector{3,T}(location), orientation=SMatrix{3,3,T}(orientation)    )
+    points = NearestDiscretisation(force_pts, quad_pts; location=SVector{3,T}(location), orientation=SMatrix{3,3,T}(orientation))
     EllipsoidBody(a, b, c, points)
 end
 

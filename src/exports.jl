@@ -17,6 +17,7 @@ export FlagellumModel, PlanarFlagellum, QuasiPlanarFlagellum, ThreeDimensionalFl
 export UniFlagellate, Flagellate, Swimmer
 # export move!, update!
 
+export is_inside_ellipsoid
 # Problems
 export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Ω, get_force_pts, get_forces, get_velocities #,  FeedingProblem, MultipleSwimmerProblem
 export ResistanceProblem, ParticleTrajectoryProblem
