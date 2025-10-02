@@ -83,3 +83,57 @@ function continue_periodic_trajectory(traj::Trajectory, N_periods=10)
         true
     )
 end
+
+"""
+Fit a helix of the form:
+
+X(t) = [x0,y0,z0] + [sinθcosϕ, sinθsinϕ, cosθ]*v*t + r(cos(ωt + ψ)*e1 + sin(ωt + ψ)*e2)
+
+where e1 and e2 form an orthonormal basis with the helical axis
+"""
+function running_mean(traj::Trajectory, radius::Int)
+    x = traj.x
+    b1 = traj.b1
+    b2 = traj.b2
+
+    rmean(v) = [sum(v[max(1,i-radius):min(n,i+radius)])/length(v[max(1,i-radius):min(n,i+radius)]) for i in 1:n]
+    n = length(traj.t)
+    Trajectory(traj.t, rmean(x), rmean(b1), rmean(b2), traj.periodic)
+end
+
+
+function fit_helix(traj::Trajectory, p0=[x0, y0, z0, v, ω, θ, ϕ, r, ψ], N=100)
+    # num_t = length(traj.t)
+    # end_t = (num_t-1)^2 
+    # traj_extended = continue_periodic_trajectory(traj, N)
+    # @info "" num_t length(traj_extended.t) num_t*(num_t-1)
+    # traj_smooth = running_mean(traj_extended.x, num_t)
+    data = vec(reduce(hcat, traj.x))
+    helix_flat(ts, p) = vec(reduce(hcat, helix(ts, p)))
+    curve_fit(helix_flat, traj.t, data, p0)
+end
+
+# helix measurements
+radius(p) = abs(p[8])
+axis_polar_angle(p) = mod(p[6], 2π)
+axis_azimuthal_angle(p) = mod(p[7], 2π)
+axis_velocity(p) = abs(p[4])
+axis_angular_velocity(p) = abs(p[5]) 
+pitch(p) = 2π * p[4] / p[5]                     # P
+pitch_angle(p) = atan( p[4] / (p[5]*p[8]) )     # α
+curvature(p) = begin
+    r = abs(p[8]); h = p[4]/p[5]                     # h = v/ω
+    r / (r^2 + h^2)
+end
+torsion(p) = begin
+    r = abs(p[8]); h = p[4]/p[5]
+    h / (r^2 + h^2)
+end
+turn_length(p) = begin
+    r, P = p[8], pitch(p)
+    sqrt((2π*r)^2 + P^2)
+end
+straightness(p) = abs(pitch(p)) / turn_length(p)
+
+axis_vec(p) = [sin(p[6])*cos(p[7]), sin(p[6])*sin(p[7]), cos(p[6])]
+chirality_sign(p) = sign(p[4]/p[5])             # +1 right-handed, -1 left-handed

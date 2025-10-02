@@ -6,7 +6,9 @@ using Parameters
 using StaticArrays
 # using LazyArrays
 # using Dierckx
-using DiffEqBase, OrdinaryDiffEq, LinearSolve
+using DiffEqBase, OrdinaryDiffEq
+using LinearSolve
+using LsqFit
 # using Meshing
 
 include("maths.jl")

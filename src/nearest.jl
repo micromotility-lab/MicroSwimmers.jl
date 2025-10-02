@@ -152,7 +152,7 @@ end
 end
 
 @inline function Base.setproperty!(f::LineTubeFlagellumNearestDiscretisation, name::Symbol, value)
-    name in (:points, :N_cs, :Q_cs, :radius) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
+    name in (:points, :Q_cs, :radius) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
 end
 
 
@@ -164,7 +164,6 @@ function LineTubeFlagellumNearestDiscretisation(
     orientation=I3,
     radius=0.01
 )
-
     points = NearestDiscretisation(N, Q*Q_cs, location=location, orientation=orientation)
     LineTubeFlagellumNearestDiscretisation(points, Q_cs, radius)
 end

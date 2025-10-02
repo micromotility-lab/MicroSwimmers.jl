@@ -104,9 +104,12 @@ function LineTubeFlagellum(
     Q_cs=5; 
     location=SVector(0., 0., 0.),
     orientation=I3,
+    radius=0.1
 )
+    
     points = LineTubeFlagellumNearestDiscretisation(N, Q, Q_cs; 
-        location=SVector{3}(location), orientation=orientation
+        location=SVector{3}(location), orientation=orientation,
+        radius=radius
     )
     f = Flagellum(model, points)
 
