@@ -1,17 +1,17 @@
-abstract type Swimmer <: FluidBoundary end
+abstract type MicroSwimmer <: FluidBoundary end
 
-function move_boundary!(S::Swimmer, x0::SVector{3,T}=SVector(0.,0.,0.), B::SMatrix{3,3,T}=I3, t::T=0.0) where {T <: Number}
+function move_boundary!(S::MicroSwimmer, x0::SVector{3,T}=SVector(0.,0.,0.), B::SMatrix{3,3,T}=I3, t::T=0.0) where {T <: Number}
     update_boundary!(S, t)
     S.points.location = x0
     S.points.orientation = B
 end
 
-function move_boundary!(S::Swimmer, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3, T}, t::T) where {T <: Number}
+function move_boundary!(S::MicroSwimmer, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3, T}, t::T) where {T <: Number}
     B = hcat(b1, b2, cross(b1, b2))
     move_boundary!(S, x0, B, t)
 end
 
-struct Flagellum{M <: FlagellumModel} <: Swimmer   # subtypes Swimmer for isolated flagella
+struct Flagellum{M <: FlagellumModel} <: MicroSwimmer   # subtypes MicroSwimmer for isolated flagella
     model::M
     points::Discretisation
 end
@@ -19,7 +19,7 @@ end
 update_boundary!(f::Flagellum, t::T) where {T <: Number} = f.model(f.points, t)
 
 
-struct Flagellate{F <: Flagellum} <: Swimmer
+struct Flagellate{F <: Flagellum} <: MicroSwimmer
     body::CellBody
     flagella::Vector{F}
     points::Discretisation

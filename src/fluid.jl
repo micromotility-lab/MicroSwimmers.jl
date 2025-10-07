@@ -28,7 +28,7 @@ function get_velocity_function(prob::SwimmingProblem; body_frame=false, xy_plane
 
         u = A * prob.force_vals[1:N]     
         if body_frame
-            u -=  U + cross(Ω, [x[1], x[2], 0.] - prob.swimmer.points.location)
+            u -=  U + cross(Ω, [x[1], x[2], 0.] - prob.microswimmer.points.location)
         end
         
         if xy_plane
@@ -56,6 +56,21 @@ function get_velocity_function(prob::Problem)
     end
 end
 
+function velocity_flux(u, z_bot, z_top, y_min, y_max; x=0., N=20)
+    # Gauss–Legendre nodes and weights on [-1, 1]
+    ys_raw, wys = gausslegendre(N)
+    ss_raw, wss = gausslegendre(N)
+
+    # Affine transform to [y_min, y_max] and [0, 1]
+    ys = 0.5*(y_max - y_min) * (ys_raw .+ 1) .+ y_min
+    wys .= 0.5*(y_max - y_min) * wys
+
+    ss = 0.5 * (ss_raw .+ 1)  # [0,1]
+    wss .= 0.5 * wss
+
+    z(y, s) = z_bot(y)*(1 - s) + s*z_top(y)
+    sum(w1*w2*u([x, yi, z(yi, si)])[1] for (yi, w1) in zip(ys, wys), (si, w2) in zip(ss, wss))
+end
 
 
 ## xy plane, MAYBE UNNECESSARY, A LOT OF REDUNDANCY HERE 
