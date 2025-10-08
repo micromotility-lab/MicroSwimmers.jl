@@ -72,6 +72,28 @@ function velocity_flux(u, z_bot, z_top, y_min, y_max; x=0., N=20)
     sum(w1*w2*u([x, yi, z(yi, si)])[1] for (yi, w1) in zip(ys, wys), (si, w2) in zip(ss, wss))
 end
 
+function velocity_flux_polar(u, x, y0, z0, R; Nr=20, Nθ=20)
+    rs_raw, wrs = gausslegendre(Nr)
+    θs_raw, wθs = gausslegendre(Nθ)
+
+    # Affine transforms
+    rs = 0.5 * R * (rs_raw .+ 1)  # r ∈ [0, R]
+    wrs .= 0.5 * R * wrs          # Jacobian for r
+
+    θs = π * (θs_raw .+ 1)        # θ ∈ [0, 2π]
+    wθs .= π * wθs                # Jacobian for θ
+
+    total_flux = 0.0
+    for (r, wr) in zip(rs, wrs), (θ, wθ) in zip(θs, wθs)
+        y = y0 + r * cos(θ)
+        z = z0 + r * sin(θ)
+        vel = u([x, y, z])
+        total_flux += vel[1] * r * wr * wθ  # extra r from polar area element
+    end
+
+    return total_flux
+end
+
 
 ## xy plane, MAYBE UNNECESSARY, A LOT OF REDUNDANCY HERE 
 struct VelocityField{T <: Number}

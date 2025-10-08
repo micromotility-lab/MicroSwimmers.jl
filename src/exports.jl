@@ -31,7 +31,7 @@ export helix, fit_helix, pitch, pitch_angle, curvature, torsion, chirality_sign,
 # Quantification
 export mean_std
 export total_force, total_torque, total_power, total_force_and_torque, stresslet_tensor, average_stresslet_tensor, total_energy_dissipated
-export VelocityField, get_velocity_function, velocity_flux, TimeAveragedVelocityField
+export VelocityField, get_velocity_function, velocity_flux, velocity_flux_polar, TimeAveragedVelocityField
 
 
 export get_sol!
