@@ -247,6 +247,80 @@ function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, tube_vel::Abstract
     end
 end
 
+mutable struct StandingWaveFlagellum{T <: Number} <: FlagellumModel
+    # Arclength discretization
+    L::T
+    A01::T
+    ϕ01::T
+    A11::T
+    ϕ11::T
+    A21::T
+    ϕ21::T
+    A31::T
+    ϕ31::T
+    ω::T
+end
+
+@inline function orientation_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
+    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
+    θ = real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
+    (sin(θ), cos(θ))
+end
+
+@inline function orientation_and_velocity_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
+    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
+    θ = real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
+    θdot = real(1im*m.ω*exp(1im*m.ω*t)*θ_space - 1im*m.ω*exp(-1im*m.ω*t)*conj(θ_space))
+    (sin(θ), cos(θ), θdot)
+end
+
+function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
+    N = size(points,2)
+    ds = T(1/(N-1))
+    half_L_ds = 0.5*m.L*ds
+
+    s_prev = T(0.0)
+    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
+    
+    @inbounds for i in 2:N
+        s = s_prev + ds
+        sinθ, cosθ = orientation_integrands(s, t, m)
+
+        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
+        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
+
+        s_prev      = s
+        sinθ_prev   = sinθ
+        cosθ_prev   = cosθ
+    end
+end
+
+
+function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T) where {T <: Number}
+    # tT = T(t) # promote t for autodiff
+    N = size(points,2)
+    ds = T(1/(N-1))
+    half_L_ds = 0.5*m.L*ds
+
+    s_prev = T(0.0)
+    sinθ_prev, cosθ_prev, θdot_prev = orientation_and_velocity_integrands(s_prev, t, m)  
+    
+    @inbounds for i in 2:N
+        s = s_prev + ds
+        sinθ, cosθ, θdot = orientation_and_velocity_integrands(s, t, m)  
+
+        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
+        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
+        velocities[1,i] = velocities[1,i-1] - (θdot_prev*sinθ_prev + θdot*sinθ) * half_L_ds
+        velocities[2,i] = velocities[2,i-1] + (θdot_prev*cosθ_prev + θdot*cosθ) * half_L_ds
+
+        s_prev      = s
+        sinθ_prev   = sinθ
+        cosθ_prev   = cosθ
+        θdot_prev = θdot
+    end
+end
+
 
 
 ## 3D flagella models

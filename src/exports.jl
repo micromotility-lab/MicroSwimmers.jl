@@ -11,7 +11,7 @@ export SphericalBody, EllipsoidBody, EllipsoidalGroovedBody # , CylindricalGroov
     
 # Flagella
 export Flagellum, TubeFlagellum, LineTubeFlagellum,VanedFlagellum 
-export FlagellumModel, PlanarFlagellum, QuasiPlanarFlagellum, ThreeDimensionalFlagellum#, TubePlanarFlagellum #, ThreeDimensionalFlagellum, StandingWaveFlagellum, Vane, VanedFlagellum
+export FlagellumModel, PlanarFlagellum, StandingWaveFlagellum, QuasiPlanarFlagellum, ThreeDimensionalFlagellum#, TubePlanarFlagellum #, ThreeDimensionalFlagellum, StandingWaveFlagellum, Vane, VanedFlagellum
 # export get_pts!, get_pts_and_velocity!
 # Swimmers
 export UniFlagellate, Flagellate, MicroSwimmer

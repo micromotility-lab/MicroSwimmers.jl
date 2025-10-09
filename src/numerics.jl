@@ -20,7 +20,7 @@ function resistance_matrix!(
     fill!(A, zero(T))
     S = MMatrix{3,3,T}(undef)
 
-    Threads.@threads for i in axes(force_pts, 2)
+    for i in axes(force_pts, 2)
         xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
         for j in axes(quad_pts, 2)
             Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]] 
