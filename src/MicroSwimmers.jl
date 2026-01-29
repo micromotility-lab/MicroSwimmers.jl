@@ -9,20 +9,23 @@ using StaticArrays
 using DiffEqBase, OrdinaryDiffEq
 using LinearSolve
 using LsqFit
+using Statistics
 # using Meshing
 using FastGaussQuadrature
+using DSP
 
 include("maths.jl")
 include("geometry.jl")
 include("numerics.jl")
 include("boundary.jl")
 include("nearest.jl")
-include("cell_body.jl")
+include("cell_body_models.jl")
+include("cell_body_constructors.jl")
 include("flagellum_models.jl")
-include("swimmers.jl")
-include("flagella.jl")
-include("problems.jl")
+include("flagellum_constructors.jl")
+include("flagellate.jl")
 include("trajectories.jl")
+include("problems.jl")
 include("forces_and_torques.jl")
 include("fluid.jl")
 include("exports.jl")

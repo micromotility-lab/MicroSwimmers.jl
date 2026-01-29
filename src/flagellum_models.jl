@@ -17,19 +17,19 @@ function (m::FlagellumModel)(points::LineTubeFlagellumNearestDiscretisation, t::
     m(quad_pts, Q_cs, t, radius=radius)
 end
 
-function(m::FlagellumModel)(points::VanedFlagellumNearestDiscretisation, t::T) where {T <: Number}
-    @unpack force_pts, velocity, quad_pts, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height = points
+# function(m::FlagellumModel)(points::VanedFlagellumNearestDiscretisation, t::T) where {T <: Number}
+#     @unpack force_pts, velocity, quad_pts, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height = points
 
-    m(force_pts, velocity, N_f, N_v, N_start, N_height, t)
-    m(quad_pts, Q_f, Q_v, Q_start, Q_height, t)
-end
+#     m(force_pts, velocity, N_f, N_v, N_start, N_height, t)
+#     m(quad_pts, Q_f, Q_v, Q_start, Q_height, t)
+# end
 
 """Flagellum with a vane (only extends in the z direction currently)"""
 function (m::FlagellumModel)(
-    points::AbstractMatrix{T},
+    points::AbstractMatrix,
     N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::T
-) where {T <: Number}
+    t::Number
+)
     f_points = @view points[:,1:N_f]
     m(f_points, t)  # Fill flagellum points and velocities
     # Fill vane
@@ -45,10 +45,10 @@ function (m::FlagellumModel)(
 end
 
 function (m::FlagellumModel)(
-    points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, 
+    points::AbstractMatrix, velocities::AbstractMatrix, 
     N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::T
-) where {T <: Number}
+    t::Number
+)
     f_points = @view points[:,1:N_f]
     f_velocities = @view velocities[:,1:N_f]
     m(f_points, f_velocities, t)  # Fill flagellum points and velocities
@@ -81,18 +81,28 @@ mutable struct PlanarFlagellum{T <: Number} <: FlagellumModel
     δ::T
 end
 
-@inline function orientation_integrands(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+@inline function tangent_angle(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
     θ₁ = m.R₀ + m.R₁*sin(m.k*s)
-    θ = m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ)
+    m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ)
+end
+
+@inline function tangent_angle_and_velocity(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+    θ₁ = m.R₀ + m.R₁*sin(m.k*s)
+    m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ), m.ω*θ₁*sin(m.ω*t - m.ϕ*s + m.δ)
+end
+
+
+@inline function orientation_integrands(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+    θ = tangent_angle(s, t, m)
     (sin(θ), cos(θ))
 end
 
 @inline function orientation_and_velocity_integrands(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
-    θ₁ = m.R₀ + m.R₁*sin(m.k*s)
-    θ = m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ)
-    (sin(θ), cos(θ), m.ω*θ₁*sin(m.ω*t - m.ϕ*s + m.δ))
+    θ, θdot = tangent_angle_and_velocity(s, t, m)
+    (sin(θ), cos(θ), θdot)
 end
 
+(m::PlanarFlagellum)(points::AbstractVector{T}, t::T) where {T <: Number} = tangent_angle(range(0, L, size(points,2)), t, m)
 
 function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
     N = size(points,2)
@@ -140,6 +150,7 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMat
         ωθ₁sin_prev = ωθ₁sin
     end
 end
+
 
 function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
     N = size(tube_points, 2) ÷ M
@@ -261,17 +272,32 @@ mutable struct StandingWaveFlagellum{T <: Number} <: FlagellumModel
     ω::T
 end
 
-@inline function orientation_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
+@inline function tangent_angle(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
     θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
-    θ = real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
+    real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
+end
+
+@inline function tangent_angle_and_velocity(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
+    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
+    real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space)), real(1im*m.ω*exp(1im*m.ω*t)*θ_space - 1im*m.ω*exp(-1im*m.ω*t)*conj(θ_space)) 
+end
+
+
+@inline function orientation_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
+    θ = tangent_angle(s, t, m)
     (sin(θ), cos(θ))
 end
 
 @inline function orientation_and_velocity_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
-    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
-    θ = real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
-    θdot = real(1im*m.ω*exp(1im*m.ω*t)*θ_space - 1im*m.ω*exp(-1im*m.ω*t)*conj(θ_space))
+    θ, θdot = tangent_angle_and_velocity(s, t, m)
     (sin(θ), cos(θ), θdot)
+end
+
+function (m::StandingWaveFlagellum)(points::AbstractVector{T}, t::T) where {T <: Number}
+    s = range(0, 1, length(points))
+    for i in eachindex(points)
+        points[i] = tangent_angle(s[i], t, m)
+    end
 end
 
 function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
@@ -412,7 +438,7 @@ mutable struct ThreeDimensionalFlagellum{T <: Number}
     λ_θ::Float64    # Polar wavelength
     C_θ::Float64    # Polar static curvature
 
-    γ::Float64      # overall phase
+    γ::Float64      # overall phase 
     Δγ::Float64     # relative phase   
 end
 

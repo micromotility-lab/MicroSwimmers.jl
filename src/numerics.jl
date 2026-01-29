@@ -58,9 +58,10 @@ function swimming_matrix!(
 ) where {T <: Number}
     fill!(A, zero(T))
 
-    Threads.@threads for i in axes(force_pts, 2)
-        S = MMatrix{3,3,T}(undef)
-        diffvec = MVector{3,T}(undef)
+    S = MMatrix{3,3,T}(undef)
+    diffvec = MVector{3,T}(undef)
+
+    for i in axes(force_pts, 2)
 
         for j in axes(quad_pts, 2)
             @inbounds for k in 1:3
@@ -95,6 +96,7 @@ function swimming_matrix!(
         end
         
         rq = SVector{3,T}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
+        
         Kq = skew_symmetric_static(rq)
         @inbounds for p in 1:3, q in 1:3
             A[end-3+p, 3n-3+q] += Kq[p,q]

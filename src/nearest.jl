@@ -38,7 +38,7 @@ function NearestDiscretisation(::Type{T},
     )
 end
 
-NearestDiscretisation(force_pts, quad_pts; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
+NearestDiscretisation(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T}; location=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
     size(force_pts, 2),
     size(quad_pts, 2),
     location,
@@ -60,50 +60,47 @@ NearestDiscretisation(force_pts, quad_pts, nearest; location=SVector(0.,0.,0.), 
     nearest
 )
 
-struct VanedFlagellumNearestDiscretisation <: Discretisation
-    points::NearestDiscretisation
+function spacing(points::NearestDiscretisation)
+    @unpack force_pts, quad_pts, N, Q = points
+    dnn = [minimum(norm.(eachcol(force_pts .- force_pts[:, i]))[setdiff(1:N, i)]) for i in 1:N]
+    hf = median(dnn)
 
-    N_f::Int
-    Q_f::Int 
-
-    N_v::Int
-    N_start::Int
-    N_height::Int
-
-    Q_v::Int
-    Q_start::Int
-    Q_height::Int
+    dnn = [minimum(norm.(eachcol(quad_pts .- quad_pts[:, i]))[setdiff(1:Q, i)]) for i in 1:Q]
+    hq = median(dnn)
+    hf, hq
 end
 
-# Forward unknown properties to `points`
-@inline function Base.getproperty(f::VanedFlagellumNearestDiscretisation, name::Symbol)
-    name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? getfield(f, name) : getproperty(f.points, name)  
-end
 
-@inline function Base.setproperty!(f::VanedFlagellumNearestDiscretisation, name::Symbol, value)
-    name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
-end
 
-function VanedFlagellumNearestDiscretisation(
-    N_f::Int,
-    Q_f::Int, 
-    N_v::Int, 
-    N_start::Int, 
-    N_height::Int; 
-    location=SVector(0.,0.,0.), 
-    orientation=I3
-) 
-    Q_v = floor(Int, (N_v / N_f) * Q_f) 
-    Q_start = ceil(Int, ((N_start-1) / (N_f-1)) * (Q_f-1))
-    Q_height = floor(Int, (N_height / N_f) * Q_f)
+# # Forward unknown properties to `points`
+# @inline function Base.getproperty(f::VanedFlagellumNearestDiscretisation, name::Symbol)
+#     name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? getfield(f, name) : getproperty(f.points, name)  
+# end
 
-    points = NearestDiscretisation(
-        N_f + N_height*N_v, Q_f + Q_height*Q_v;
-        location=location, orientation=orientation
-    )
+# @inline function Base.setproperty!(f::VanedFlagellumNearestDiscretisation, name::Symbol, value)
+#     name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
+# end
 
-    VanedFlagellumNearestDiscretisation(points, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height)
-end
+# function VanedFlagellumNearestDiscretisation(
+#     N_f::Int,
+#     Q_f::Int, 
+#     N_v::Int, 
+#     N_start::Int, 
+#     N_height::Int; 
+#     location=SVector(0.,0.,0.), 
+#     orientation=I3
+# ) 
+#     Q_v = floor(Int, (N_v / N_f) * Q_f) 
+#     Q_start = ceil(Int, ((N_start-1) / (N_f-1)) * (Q_f-1))
+#     Q_height = floor(Int, (N_height / N_f) * Q_f)
+
+#     points = NearestDiscretisation(
+#         N_f + N_height*N_v, Q_f + Q_height*Q_v;
+#         location=location, orientation=orientation
+#     )
+
+#     VanedFlagellumNearestDiscretisation(points, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height)
+# end
 
 
 struct TubeFlagellumNearestDiscretisation{T <: Number} <: Discretisation
@@ -171,15 +168,25 @@ end
 
 
 
-function nearest_neighbour(force_pts, quad_pts)
+function nearest_neighbour(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T}) where {T <: Number}
     nearest = Int[]
     for x in eachcol(quad_pts)
         d = vec(sum((force_pts .- x).^2, dims=1))
-        push!(nearest, argmin(d))
+       push!(nearest, argmin(d))
     end
     nearest
 end 
 
+function nearest_neighbour(force_pts::AbstractVector{<:AbstractMatrix{T}}, quad_pts::AbstractVector{<:AbstractMatrix{T}}) where {T <: Number}
+    nearest = Int[]
+    idx = 0
+    for (f_pts, q_pts) in zip(force_pts, quad_pts)
+        nn = nearest_neighbour(f_pts, q_pts)
+        append!(nearest, idx .+ nn)
+        idx += size(f_pts, 2)
+    end
+    nearest
+end
 
 function nearest_neighbour!(points::Discretisation)
     points.nearest .= nearest_neighbour(points.force_pts, points.quad_pts)

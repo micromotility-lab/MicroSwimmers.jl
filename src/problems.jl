@@ -3,6 +3,9 @@ abstract type Problem end
 abstract type InstantaneousProblem <: Problem end
 abstract type DynamicProblem <: Problem end
 
+###########################################################################################
+### Instantaneous Problems ################################################################
+###########################################################################################
 
 function check_solved!(prob::InstantaneousProblem)
     if isnothing(prob.force_vals)
@@ -11,8 +14,48 @@ function check_solved!(prob::InstantaneousProblem)
     end
 end
 
+function time_collect!(prob::InstantaneousProblem,
+    pre_transform::Function, 
+    output::Function, 
+    t_final::T, 
+    num_t::Int; 
+    endpoint=false
+) where {T <: Number}
+    ts = endpoint ? range(0, t_final, num_t) : range(0, t_final, num_t)[1:end-1]
+    X = Vector{Any}(undef, length(ts))
+    for (i,t) in enumerate(ts)
+        pre_transform(prob, t)
+        solve_problem!(prob)
+        X[i] = output(prob)
+    end
+    X
+end
+
+function time_mean!(prob::InstantaneousProblem, pre_transform!::Function, output::Function, t_final::T, num_t::Int; endpoint=false) where {T <: Number}
+    X = time_collect!(prob, pre_transform!, output, t_final, num_t; endpoint=endpoint)
+    mean(X)
+end
+
+function time_mean_std(prob::InstantaneousProblem, pre_transform!::Function, output::Function, t_final::T, num_t::Int; endpoint=false) where {T <: Number}
+    X = time_collect!(prob, pre_transform!, output, t_final, num_t; endpoint=endpoint)
+    mean(X), std(X)
+end
+
 get_force_pts(prob::InstantaneousProblem) = [SVector{3}(pt) for pt in eachcol(prob.points.force_pts)]
 
+
+function translate_problem!(prob::InstantaneousProblem, x0::AbstractVector)
+    prob.points.force_pts .= x0 .+ prob.points.force_pts
+    prob.points.quad_pts .= x0 .+ prob.points.quad_pts
+    prob.microswimmer.points.location = prob.microswimmer.points.location + SVector{3}(x0)
+end
+
+function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix)
+    prob.points.force_pts .= B * prob.points.force_pts
+    prob.points.velocity  .= B * prob.points.velocity
+    prob.points.quad_pts  .= B * prob.points.quad_pts
+    prob.microswimmer.points.orientation = B * prob.microswimmer.points.orientation
+end
 
 mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
     microswimmer::MicroSwimmer
@@ -54,7 +97,6 @@ function SwimmingProblem(
     sp
 end
 
-
 function get_U(prob::SwimmingProblem)
     check_solved!(prob)
     SVector{3}(prob.force_vals[end-5:end-3])
@@ -75,7 +117,7 @@ function get_velocities(prob::SwimmingProblem)
     U = get_U(prob)
     Ω = get_Ω(prob)
 
-    [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Ω), get_force_pts(prob))
+    [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Ω), get_force_pts(prob) .- Ref(prob.points.location))
 end
 
 function update_boundary!(prob::SwimmingProblem, t::T) where {T<:Number}
@@ -120,13 +162,86 @@ function solve_problem!(sp::SwimmingProblem)
     sp.force_vals = solve(sp.lin_prob, MKLLUFactorization())
 end
 
-struct Trajectory{T<:Number}
-    t::Vector{T}
-    x::Vector{SVector{3,T}}
-    b1::Vector{SVector{3,T}}
-    b2::Vector{SVector{3,T}}
-    periodic::Bool
+
+mutable struct ResistanceProblem{T<:Number} <: InstantaneousProblem
+    boundary::FluidBoundary
+    points::Discretisation
+    eps::T   # regularisation parameter
+    mu::T    # viscosity
+
+    lin_prob::LinearProblem
+    force_vals::Union{Nothing,Vector{T}}
+    wall::Bool
 end
+
+
+function ResistanceProblem(
+    boundary::FluidBoundary;
+    eps::T=0.01,
+    mu::T=1.0,
+    wall=false
+) where {T<:Number}
+
+    @unpack N, Q, force_pts, quad_pts, velocity, nearest, location, orientation = boundary.points
+
+    points = NearestDiscretisation(
+        N, Q,
+        SVector(0.0, 0.0, 0.0), I3,
+        zeros(T, size(force_pts)),
+        zeros(T, size(force_pts)),
+        zeros(T, size(quad_pts)),
+        nearest
+    )
+
+    prob = ResistanceProblem(
+        boundary, points, eps, mu,
+        LinearProblem(zeros(T, 3N, 3N), zeros(T, 3N)),
+        nothing,
+        wall
+    )
+
+    update_boundary!(prob, 0.0)
+    prob
+end
+
+get_velocities(prob::ResistanceProblem)  = [SVector{3}(vel) for vel in eachcol(prob.points.velocity)]
+
+function get_forces(prob::ResistanceProblem)
+    check_solved!(prob)
+    force_vectors = reshape(prob.force_vals, 3, :)
+    [SVector{3}(f) for f in eachcol(force_vectors)]
+end
+
+function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
+    update_boundary!(prob.boundary, t)
+    @unpack location, orientation, force_pts, quad_pts, velocity = prob.boundary.points
+
+    @views begin
+        prob.points.force_pts .= location .+ orientation * force_pts
+        prob.points.velocity .= orientation * velocity
+        prob.points.quad_pts .= location .+ orientation * quad_pts
+    end
+end
+
+function solve_problem!(prob::ResistanceProblem)
+    @unpack lin_prob, points, boundary, eps, mu = prob
+    resistance_matrix!(
+        lin_prob.A,
+        points.force_pts,
+        points.quad_pts,
+        points.nearest,
+        eps;
+        μ=mu,
+    )
+    lin_prob.b .= reshape(points.velocity, :)
+    prob.force_vals = solve(lin_prob, MKLLUFactorization())
+end
+
+
+###########################################################################################
+### Dynamic Problems ######################################################################
+###########################################################################################
+
 
 mutable struct SwimmingTrajectoryProblem <: DynamicProblem
     swimming_problem::SwimmingProblem
@@ -198,79 +313,13 @@ function check_solved!(prob::SwimmingTrajectoryProblem)
     end
 end
 
-mutable struct ResistanceProblem{T<:Number} <: InstantaneousProblem
-    microswimmer::MicroSwimmer
-    points::Discretisation
-    eps::T   # regularisation parameter
-    mu::T    # viscosity
-
-    lin_prob::LinearProblem
-    force_vals::Union{Nothing,Vector{T}}
-    wall::Bool
-end
-
-
-function ResistanceProblem(
-    microswimmer::MicroSwimmer;
-    eps::T=0.01,
-    mu::T=1.0,
-    wall=false
-) where {T<:Number}
-
-    @unpack N, Q, force_pts, quad_pts, velocity, nearest, location, orientation = microswimmer.points
-
-    points = NearestDiscretisation(
-        N, Q,
-        SVector(0.0, 0.0, 0.0), I3,
-        zeros(T, size(force_pts)),
-        zeros(T, size(force_pts)),
-        zeros(T, size(quad_pts)),
-        nearest
-    )
-
-    prob = ResistanceProblem(
-        microswimmer, points, eps, mu,
-        LinearProblem(zeros(T, 3N, 3N), zeros(T, 3N)),
-        nothing,
-        wall
-    )
-
-    update_boundary!(prob, 0.0)
-    prob
-end
-# This gets the total velocity including rigid body dynamics at the force points
-get_velocities(prob::ResistanceProblem)  = [SVector{3}(vel) for vel in eachcol(prob.points.velocity)]
-
-function get_forces(prob::ResistanceProblem)
+function move_boundary!(prob::SwimmingTrajectoryProblem, t_ind::Int)
     check_solved!(prob)
-    force_vectors = reshape(prob.force_vals, 3, :)
-    [SVector{3}(f) for f in eachcol(force_vectors)]
+    traj = prob.traj
+    move_boundary!(prob.swimming_problem, traj.x[t_ind], traj.b1[t_ind], traj.b2[t_ind], traj.t[t_ind])
 end
 
-function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
-    update_boundary!(prob.microswimmer, t)
-    @unpack location, orientation, force_pts, quad_pts, velocity = prob.microswimmer.points
-
-    @views begin
-        prob.points.force_pts .= location .+ orientation * force_pts
-        prob.points.velocity .= orientation * velocity
-        prob.points.quad_pts .= location .+ orientation * quad_pts
-    end
-end
-
-function solve_problem!(prob::ResistanceProblem)
-    @unpack lin_prob, points, microswimmer, eps, mu = prob
-    resistance_matrix!(
-        lin_prob.A,
-        points.force_pts,
-        points.quad_pts,
-        points.nearest,
-        eps;
-        μ=mu,
-    )
-    lin_prob.b .= reshape(points.velocity, :)
-    prob.force_vals = solve(lin_prob, MKLLUFactorization())
-end
+# Change to ParticleTrajectoryResistanceProblem and do the same for swimming
 
 mutable struct ParticleTrajectoryProblem{T<:Number} <: Problem
     resistance_problem::ResistanceProblem{T}
