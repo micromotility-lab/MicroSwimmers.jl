@@ -9,6 +9,27 @@ function regularised_stokeslet!(S::StaticMatrix{3,3,T}, R::StaticVector{3,T}; ep
     end
 end
 
+function stokeslet!(S::StaticMatrix{3,3,T}, R::StaticVector{3,T}) where {T<:Number}
+    rsqr = dot(R, R)
+
+    # singular at r = 0
+    if rsqr == zero(T)
+        @inbounds for i in 1:3, j in 1:3
+            S[i,j] = (i == j) ? T(Inf) : zero(T)
+        end
+        return
+    end
+
+    denom = inv(rsqr * sqrt(rsqr))  # 1 / r^3
+
+    @inbounds for i in 1:3, j in 1:3
+        S[i,j] = rsqr * (i == j) + R[i] * R[j]
+        S[i,j] *= denom
+    end
+
+    return
+end
+
 function resistance_matrix!(
     A::AbstractMatrix{T},
     force_pts::AbstractMatrix{T},
@@ -26,6 +47,7 @@ function resistance_matrix!(
             Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]] 
             R = xi - Xj
             regularised_stokeslet!(S, R; eps=eps)
+            # stokeslet!(S, R)
 
             n = nearest[j]
             @inbounds for p in 1:3, q in 1:3

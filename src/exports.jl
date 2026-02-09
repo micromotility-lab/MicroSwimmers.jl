@@ -41,3 +41,4 @@ export spacing
 
 export get_sol!
 
+export check_boundary_conditions, check_body_boundary_conditions

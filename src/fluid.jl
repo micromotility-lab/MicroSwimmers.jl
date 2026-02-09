@@ -162,7 +162,6 @@ function velocity_flux_polar(u, x, y0, z0, R; Nr=20, Nθ=20)
 end
 
 
-
 # struct AverageVelocityFunction
 #     vfns::Vector{VelocityFunction}
 # end
