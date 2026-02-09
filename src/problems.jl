@@ -296,8 +296,6 @@ function SwimmingTrajectoryProblem(
     wall=false
 )
     T = eltype(S.points.force_pts)
-    # x0 = SVector{3,T}(x0)
-    # B = SMatrix{3,3,T}(B)
 
     sprob = SwimmingProblem(S; eps=T(eps), mu=T(mu), wall=wall)
 
@@ -315,11 +313,6 @@ function SwimmingTrajectoryProblem(
         solve_problem!(sprob)
         Ω = get_Ω(sprob)
         vcat(get_U(sprob), cross(Ω, b1), cross(Ω, b2))
-        # @views begin
-        #     dX[1:3] .= get_U(sprob)
-        #     dX[4:6] .= cross(Ω, X[4:6])
-        #     dX[7:9] .= cross(Ω, X[7:9])
-        # end
     end
 
     SwimmingTrajectoryProblem(
