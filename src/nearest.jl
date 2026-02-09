@@ -61,11 +61,16 @@ NearestDiscretisation(force_pts, quad_pts, nearest; location=SVector(0.,0.,0.), 
 )
 
 function spacing(points::NearestDiscretisation)
-    @unpack force_pts, quad_pts, N, Q = points
+    @unpack force_pts, quad_pts, N, Q, nearest = points
     dnn = [minimum(norm.(eachcol(force_pts .- force_pts[:, i]))[setdiff(1:N, i)]) for i in 1:N]
     hf = median(dnn)
 
-    dnn = [minimum(norm.(eachcol(quad_pts .- quad_pts[:, i]))[setdiff(1:Q, i)]) for i in 1:Q]
+    dnn = Float64[]
+    for i in 1:N
+        patch_quad_pts = quad_pts[:, nearest .== i]
+        Qp = size(patch_quad_pts, 2)
+        append!(dnn, [minimum(norm.(eachcol(patch_quad_pts .- patch_quad_pts[:, j]))[setdiff(1:Qp, j)]) for j in 1:Qp])
+    end
     hq = median(dnn)
     hf, hq
 end

@@ -22,6 +22,8 @@ export UniFlagellate, Flagellate, MicroSwimmer
 
 export is_inside_ellipsoid
 
+export regularised_blakelet!
+
 # Problems
 export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Ω, get_force_pts, get_forces, get_velocities #,  FeedingProblem, MultipleSwimmerProblem
 export ResistanceProblem, ParticleTrajectoryProblem
@@ -41,3 +43,4 @@ export spacing
 
 export get_sol!
 
+export check_boundary_conditions, check_body_boundary_conditions
