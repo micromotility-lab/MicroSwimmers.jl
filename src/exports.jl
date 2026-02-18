@@ -1,6 +1,6 @@
 # Utilities 
 export rotation_matrix, rotation_align_to_x
-
+export hf, hq
 # Core structures & problems
 export FluidBoundary, update_boundary!, move_boundary!
 export CellBody
@@ -8,7 +8,7 @@ export Configuration
 
 export fibonacci_cylinder
 # Bodies
-export RigidMotionBody, add_rigid_body_motion
+export RigidMotionBody, add_rigid_body_motion!, add_velocity!, add_angular_velocity!, reset_velocity!
 export SphericalBody, EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody #, PNASExcavateBody
     
 # Flagella
@@ -18,6 +18,7 @@ export get_vane_pts
 # export get_pts!, get_pts_and_velocity!
 # Swimmers
 export UniFlagellate, Flagellate, MicroSwimmer
+export discretisation
 # export move!, update!
 
 export is_inside_ellipsoid
@@ -25,7 +26,7 @@ export is_inside_ellipsoid
 export regularised_blakelet!
 
 # Problems
-export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Ω, get_force_pts, get_forces, get_velocities #,  FeedingProblem, MultipleSwimmerProblem
+export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Ω, get_force_pts, get_forces, get_velocities, get_quad_pt_velocities #,  FeedingProblem, MultipleSwimmerProblem
 export ResistanceProblem, ParticleTrajectoryProblem
 export solve_problem! #, total_body_force_and_torque, get_velocity_function
 export translate_problem!, rotate_problem!

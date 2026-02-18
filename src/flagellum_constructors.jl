@@ -6,8 +6,9 @@ struct BareFlagellum{M <: FlagellumModel, D <: Discretisation} <: Flagellum
 end
 
 function update_boundary!(f::BareFlagellum, t::T) where {T <: Number}
-    f.model(f.points.force_pts, f.points.velocity, t)
-    f.model(f.points.quad_pts, t)
+    f.model(f.points, t)
+    # f.model(f.points.force_pts, f.points.velocity, t)
+    # f.model(f.points.quad_pts, t)
 end
 
 function Flagellum(

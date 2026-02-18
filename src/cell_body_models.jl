@@ -3,6 +3,28 @@ abstract type CellBodyModel end
 # calculate the rigid body velocity at pts due to translation U and rotation Ω
 (m::CellBodyModel)(pts::AbstractMatrix, U::AbstractVector, Ω::AbstractVector)= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(pts)))
 
+# Nearest spacing helper functions for cell bodies
+
+function hf(model::CellBodyModel; Ns=[113, 2*113+7, 4*113+7, 8*113+7])
+    hfs = []
+    for N in Ns
+        body = CellBody(model, N, 4*N+7)
+        push!(hfs, hf(body.points))
+    end
+    hfs
+end
+
+function hq(model::CellBodyModel; Qs=[(2^i)*400 + 7 for i in 1:6])
+    hqs = []
+    for Q in Qs
+        body = CellBody(model, Q ÷ 5 - 7, Q)
+        push!(hqs, hq(body.points))
+    end
+    hqs
+end
+
+
+
 mutable struct EllipsoidBody{T <: Number} <: CellBodyModel
     a::T
     b::T 

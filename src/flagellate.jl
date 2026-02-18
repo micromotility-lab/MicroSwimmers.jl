@@ -76,3 +76,7 @@ function update_boundary!(flgt::Flagellate, t::T) where {T <: Number}
         end 
     end
 end
+
+function discretisation(flgt::Flagellate)
+    @info "Discretisation" flgt.body.points.N flgt.body.points.Q flgt.flagella[1].points.N flgt.flagella[1].points.Q
+end

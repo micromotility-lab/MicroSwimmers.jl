@@ -1,4 +1,4 @@
-mutable struct CellBody <: FluidBoundary
+mutable struct CellBody <: MicroSwimmer
     model::CellBodyModel
     points::NearestDiscretisation
 end
@@ -45,7 +45,7 @@ end
 #     CellBody(model, points)
 # end
 
-SphericalBody(a=0.2; N=27, Q=99, ϵ=0.01) = CellBody(EllipsoidBody(a, a, a), N, Q)
+SphericalBody(a=0.2; N=27, Q=99) = CellBody(EllipsoidBody(a, a, a), N, Q)
 
 
 function RigidMotionBody(
@@ -59,3 +59,5 @@ function RigidMotionBody(
     body.points.velocity .= model(body.points.force_pts, U, Ω)
     body
 end
+
+

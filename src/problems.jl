@@ -109,15 +109,40 @@ function get_forces(prob::SwimmingProblem)
     [SVector{3}(f) for f in eachcol(force_vectors)]
 end
 
-# This gets the total velocity including rigid body dynamics at the force points
+# Get the total velocity including rigid body dynamics at the force points
 function get_velocities(prob::SwimmingProblem)
     U = get_U(prob)
     Ω = get_Ω(prob)
-
+    
     [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Ω), get_force_pts(prob) .- Ref(prob.points.location))
 end
 
-function update_boundary!(prob::SwimmingProblem, t::T) where {T<:Number}
+# Get the total velocity including rigid body dynamics at the quad points
+function get_quad_pt_velocities(prob::SwimmingProblem; t=0.0)
+    pts = prob.points.quad_pts
+    q_pts = zeros(size(pts))
+    vs = zeros(size(pts))
+    flgt = prob.microswimmer
+    q_inds = flgt.quad_pt_indices
+
+    for (i, flagellum) in enumerate(flgt.flagella) 
+        Q = flagellum.points.Q
+        fl_pts = @view q_pts[:,q_inds[i]:q_inds[i]+Q-1]
+        fl_vs = @view vs[:,q_inds[i]:q_inds[i]+Q-1]
+        flagellum.model(fl_pts, fl_vs, t)
+        vs[:,q_inds[i]:q_inds[i]+Q-1] .= flgt.points.orientation*flagellum.points.orientation*vs[:,q_inds[i]:q_inds[i]+Q-1]
+    end
+
+    x0 = prob.microswimmer.points.location
+    U = get_U(prob)
+    Ω = get_Ω(prob)
+
+    vs = [SVector{3}(v) for v in eachcol(vs)]
+    rigid_body_vel = Ref(U) .+ cross.(Ref(Ω), eachcol(pts) .- Ref(x0))
+    rigid_body_vel .+ vs
+end
+
+function update_boundary!(prob::SwimmingProblem, t::T) where {T <: Number}
     update_boundary!(prob.microswimmer, t)
     @unpack location, orientation, force_pts, quad_pts, velocity = prob.microswimmer.points
 
@@ -128,7 +153,7 @@ function update_boundary!(prob::SwimmingProblem, t::T) where {T<:Number}
     end
 end
 
-function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::Number) where {T<:Number}
+function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::Number) where {T <: Number}
     tT = T(t)
     move_boundary!(prob.microswimmer, x0, B, tT)
 
@@ -171,23 +196,23 @@ function check_body_boundary_conditions(prob::SwimmingProblem)
 
     rigid_body_vel = Ref(U) .+ cross.(Ref(Ω), eachcol(body_pts) .- Ref(x0))
     u = FluidVelocity(prob)
+
     resid = norm.(u.(eachcol(body_pts)) .- rigid_body_vel)
     median(resid), maximum(resid)
 end
 
 # Check all boundary conditions at quad pts, using nearest to approximate the velocities at quad points
-function check_boundary_conditions(prob::SwimmingProblem)
+function check_boundary_conditions(prob::SwimmingProblem; t=0.0)
+    update_boundary!(prob, t)
+    solve_problem!(prob)
     pts = prob.points.quad_pts
-    vs = [SVector{3}(prob.points.velocity[:,n]) for n in prob.points.nearest]
-    x0 = prob.microswimmer.points.location
-    U = get_U(prob)
-    Ω = get_Ω(prob)
-
-    rigid_body_vel = Ref(U) .+ cross.(Ref(Ω), eachcol(pts) .- Ref(x0))
     u = FluidVelocity(prob)
 
-    resid = norm.(u.(eachcol(pts)) .- rigid_body_vel .- vs)
-    median(resid), maximum(resid)
+    q_vs = get_quad_pt_velocities(prob, t=t)
+    V_scale = quantile(norm.(q_vs), 0.95) # median(norm.(q_vs))
+    resid = norm.(u.(eachcol(pts)) .- q_vs) ./ V_scale
+    resid
+    # median(resid), findmax(resid)
 end
 
 mutable struct ResistanceProblem{T<:Number} <: InstantaneousProblem
@@ -239,6 +264,24 @@ function get_forces(prob::ResistanceProblem)
     [SVector{3}(f) for f in eachcol(force_vectors)]
 end
 
+# Get velocities at the quad points
+function get_quad_pt_velocities(prob::ResistanceProblem; t=0.0)
+    pts = prob.points.quad_pts
+    q_pts = zeros(size(pts))
+    vs = zeros(size(pts))
+    flgt = prob.boundary
+    q_inds = flgt.quad_pt_indices
+
+    for (i, flagellum) in enumerate(flgt.flagella) 
+        Q = flagellum.points.Q
+        fl_pts = @view q_pts[:,q_inds[i]:q_inds[i]+Q-1]
+        fl_vs = @view vs[:,q_inds[i]:q_inds[i]+Q-1]
+        flagellum.model(fl_pts, fl_vs, t)
+        vs[:,q_inds[i]:q_inds[i]+Q-1] .= flgt.points.orientation*flagellum.points.orientation*vs[:,q_inds[i]:q_inds[i]+Q-1]
+    end
+    [SVector{3}(v) for v in eachcol(vs)]
+end
+
 function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
     update_boundary!(prob.boundary, t)
     @unpack location, orientation, force_pts, quad_pts, velocity = prob.boundary.points
@@ -264,9 +307,9 @@ function solve_problem!(prob::ResistanceProblem)
     prob.force_vals = solve(lin_prob, MKLLUFactorization())
 end
 
-function check_boundary_conditions(prob::ResistanceProblem)
+function check_boundary_conditions(prob::ResistanceProblem; t=0.0)
     pts = prob.points.quad_pts
-    vs = [SVector{3}(prob.points.velocity[:,n]) for n in prob.points.nearest]
+    vs = get_quad_pt_velocities(prob; t=t)
     u = FluidVelocity(prob)
     @info "" vs u.(eachcol(pts))
     resid = norm.(u.(eachcol(pts)) .- vs)
