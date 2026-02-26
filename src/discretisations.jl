@@ -1,5 +1,30 @@
 abstract type Discretisation end
 
+mutable struct NystromDiscretisation{T <: Number} <: Discretisation
+    N::Int
+    location::SVector{3,T}
+    orientation::SMatrix{3,3,T}
+    force_pts::Matrix{T}
+    velocities::Matrix{T}
+end
+
+NystromDiscretisation(N::Int; location::SVector{3, T}=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NystromDiscretisation(
+    N,
+    location,
+    orientation,
+    zeros(T,3,N),
+    zeros(T,3,N)
+ )
+
+ NystromDiscretisation(force_pts::Matrix{T}, velocities::Matrix{T}; location::SVector{3, T}=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NystromDiscretisation(
+    size(force_pts,2),
+    location,
+    orientation,
+    force_pts,
+    velocities
+ )
+
+
 mutable struct NearestDiscretisation{T <: Number} <: Discretisation
     N::Int                          # number of force points
     Q::Int                          # number of quadrature points
@@ -11,6 +36,12 @@ mutable struct NearestDiscretisation{T <: Number} <: Discretisation
     nearest::Vector{Int}            # length Q
 end
 
+traction_nodes(points::NystromDiscretisation)  = points.force_pts       # 3×N
+
+n_traction_nodes(points) = size(traction_nodes(points), 2)
+n_unknowns(points) = 3 * n_traction_nodes(points)
+
+
 NearestDiscretisation(N::Int, Q::Int; location::SVector{3, T}=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
     N,
     Q,
@@ -21,11 +52,11 @@ NearestDiscretisation(N::Int, Q::Int; location::SVector{3, T}=SVector(0.,0.,0.),
     zeros(T, 3, Q),
     zeros(Int, Q)
 )
-
+    
 function NearestDiscretisation(::Type{T}, 
     N::Int, Q::Int; 
     location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I)
-) where {T <: Number}
+    ) where {T <: Number}
     NearestDiscretisation(
         N,
         Q,
@@ -37,6 +68,8 @@ function NearestDiscretisation(::Type{T},
         zeros(Int, Q)
     )
 end
+    
+traction_nodes(points::NearestDiscretisation) = points.force_pts  # 3×Nf
 
 NearestDiscretisation(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T}; location=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
     size(force_pts, 2),
@@ -49,6 +82,7 @@ NearestDiscretisation(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T};
     nearest_neighbour(force_pts, quad_pts)
 )
 
+
 NearestDiscretisation(force_pts, quad_pts, nearest; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
     size(force_pts, 2),
     size(quad_pts, 2),
@@ -59,7 +93,7 @@ NearestDiscretisation(force_pts, quad_pts, nearest; location=SVector(0.,0.,0.), 
     quad_pts,
     nearest
 )
-
+        
 function spacing(points::NearestDiscretisation)
     @unpack force_pts, quad_pts, N, Q, nearest = points
     dnn = [minimum(norm.(eachcol(force_pts .- force_pts[:, i]))[setdiff(1:N, i)]) for i in 1:N]

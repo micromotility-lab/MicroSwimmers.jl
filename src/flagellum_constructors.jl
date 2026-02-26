@@ -11,6 +11,7 @@ function update_boundary!(f::BareFlagellum, t::T) where {T <: Number}
     # f.model(f.points.quad_pts, t)
 end
 
+# Provide N and Q for a nearest discretisation
 function Flagellum(
     model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
     N=23, 
@@ -23,6 +24,20 @@ function Flagellum(
     f = BareFlagellum(model, points)
     update_boundary!(f, 0.)
     nearest_neighbour!(f.points)
+    f
+end
+
+
+# Only provide N for a Nystrom discretisation
+function Flagellum(
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
+    N=127;
+    location=SVector(0., 0., 0.),
+    orientation=I3
+)
+    points = NystromDiscretisation(N; location=SVector{3}(location), orientation=orientation)
+    f = BareFlagellum(model, points)
+    update_boundary!(f, 0.)
     f
 end
 

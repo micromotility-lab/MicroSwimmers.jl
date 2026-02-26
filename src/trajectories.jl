@@ -57,16 +57,24 @@ end
 Use principal components of the trajectory to construct some rough helix
 parameters to use as an initial guess for a nonlinear least squares fit.
 """
-function initial_helix_pars(traj::Trajectory; ax_ind=1)
+function initial_helix_pars(traj::Trajectory)
     c = mean(traj.x)
     traj_moved = traj.x .- Ref(c)
     U, S, V = svd(reduce(hcat, traj_moved))
-
-    if U[1,ax_ind] < 0
+    if (S[1] - S[2])/S[1] < 0.1 || (S[1] - S[3])/S[1] < 0.1
+        ax_ind=3
+    else
+        ax_ind=1
+    end
+    
+    v = S[ax_ind]*(V[end,ax_ind] - V[1,ax_ind]) / traj.t[end]
+    if v < 0
+        @info "here"
         U[:,[ax_ind, 2]] *= -1
         V[:,[ax_ind, 2]] *= -1
     end
     a = U[:,ax_ind]
+    @info ""
     u = abs(a[1]) > 0.9 ? ey : ex
     proj = u - dot(a, u)*a
     e1 = proj / norm(proj)
@@ -81,10 +89,10 @@ function initial_helix_pars(traj::Trajectory; ax_ind=1)
     A = [ones(length(traj.t)) traj.t]
     ψ, ω = A \ phase
 
-    v = S[1]*(V[end,1] - V[1,1]) / traj.t[end]
-    θ = acos(clamp(a[3], -1.0, 1.0))
-    ϕ = sign(a[2])*acos(clamp(a[1]/(a[1]^2 + a[2]^2), -1.0, 1.0))
-    r = S[3]*(maximum(V[:,3]) - minimum(V[:,3])) / 2
+    v = S[ax_ind]*(V[end,ax_ind] - V[1,ax_ind]) / traj.t[end]
+    θ = acos(dot(a, ez)) # clamp(a[3], -1.0, 1.0))
+    ϕ = sign(a[2])*acos(clamp(a[ax_ind]/(a[ax_ind]^2 + a[2]^2), -1.0, 1.0))
+    r = S[2]*(maximum(V[:,2]) - minimum(V[:,2])) / 2
     [X0..., v, ω, θ, ϕ, r, ψ]
 end
 
@@ -95,10 +103,10 @@ X(t) = [x0,y0,z0] + [sinθcosϕ, sinθsinϕ, cosθ]*v*t + r(cos(ωt + ψ)*e1 + s
 
 where e1 and e2 form an orthonormal basis with the helical axis
 """
-function fit_helix(traj::Trajectory; N=1, smooth=true, ax_ind=1, num_t=10)
+function fit_helix(traj::Trajectory; N=1, smooth=true, num_t=10)
     traj_extended = N > 1 ? continue_periodic_trajectory(traj, N) : traj
     traj_smooth = smooth ? running_mean(traj_extended, num_t) : traj_extended
-    p0 = initial_helix_pars(traj_smooth, ax_ind=ax_ind)
+    p0 = initial_helix_pars(traj_smooth)
     data = vec(reduce(hcat, traj_smooth.x))
     helix_flat(ts, p) = vec(reduce(hcat, helix(ts, p)))
     fit = curve_fit(helix_flat, traj_smooth.t, data, p0)

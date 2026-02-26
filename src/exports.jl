@@ -18,7 +18,7 @@ export get_vane_pts
 # export get_pts!, get_pts_and_velocity!
 # Swimmers
 export UniFlagellate, Flagellate, MicroSwimmer
-export discretisation
+export discretisation, NearestDiscretisation, NystromDiscretisation
 # export move!, update!
 
 export is_inside_ellipsoid
@@ -34,7 +34,7 @@ export translate_problem!, rotate_problem!
 # Trajectories
 export Trajectory, average_swimming_velocity, continue_periodic_trajectory!, continue_periodic_trajectory, running_mean
 export Helix, helix, fit_helix, pitch, pitch_angle, curvature, torsion, chirality_sign, axis_angular_velocity, axis_azimuthal_angle, axis_velocity, axis_polar_angle, radius, axis_vector, initial_point
-
+export initial_helix_pars
 # Quantification
 export mean_std
 export total_force, total_torque, total_power, total_force_and_torque, stresslet_tensor, average_stresslet_tensor, disturbance_stresslet_tensor, total_energy_dissipated

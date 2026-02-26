@@ -322,4 +322,137 @@ function swimming_matrix!(
     end
 end
 
+function swimming_matrix!(
+    A::Matrix{T}, 
+    x0::SVector{3,T}, 
+    points::NearestDiscretisation,
+    eps::T; 
+    μ::T=one(T),
+    wall::Bool=false
+) where {T <: Number}
+    @unpack force_pts, quad_pts, nearest = points
+    fill!(A, zero(T))
 
+    S = MMatrix{3,3,T}(undef)
+    S2 = MMatrix{3,3,T}(undef)
+    diffvec = MVector{3,T}(undef)
+
+    for i in axes(force_pts, 2)
+        xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
+        for j in axes(quad_pts, 2)
+            Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]] 
+            
+            # @inbounds for k in 1:3
+            #     diffvec[k] = force_pts[k,i] - quad_pts[k,j]
+            # end
+            n = nearest[j]
+            if wall
+                regularised_blakelet!(S, S2, xi, Xj;  eps=eps)
+            else
+                R = xi - Xj
+                regularised_stokeslet!(S, R; eps=eps)
+            end
+            @inbounds for p in 1:3, q in 1:3
+                A[3i-3+p, 3n-3+q] -= S[p,q]
+            end
+        end
+
+        @inbounds for p in 1:3
+            A[3i-3+p, end-6+p] = -one(T)  
+            diffvec[p] = force_pts[p,i] - x0[p]
+        end
+
+        K = skew_symmetric_static(diffvec)
+        @inbounds for p in 1:3, q in 1:3
+            A[3i-3+p, end-3+q] = K[p,q]
+        end
+    end
+
+    nf = length(force_pts)
+    @inbounds A[1:nf, 1:nf] ./= (-T(8) * T(π) * μ)
+    
+    for j in axes(quad_pts, 2)
+        n = nearest[j]
+
+        @inbounds for d in 1:3
+            A[end-6+d, 3n-3+d] += one(T)
+        end
+        
+        rq = SVector{3,T}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
+        
+        Kq = skew_symmetric_static(rq)
+        @inbounds for p in 1:3, q in 1:3
+            A[end-3+p, 3n-3+q] += Kq[p,q]
+        end
+    end
+end
+
+function swimming_matrix!(
+    A::Matrix{T},
+    x0::SVector{3,T},
+    points::NystromDiscretisation,
+    eps::T;
+    μ::T = one(T),
+    wall::Bool = false
+) where {T<:Number}
+
+    pts = points.pts              # 3 × N
+    N   = size(pts, 2)
+    fill!(A, zero(T))
+
+    S  = MMatrix{3,3,T}(undef)
+    S2 = MMatrix{3,3,T}(undef)
+    diffvec = MVector{3,T}(undef)
+
+    # Collocation at i, integrate over j (same nodes)
+    @inbounds for i in 1:N
+        xi = @SVector [pts[1,i], pts[2,i], pts[3,i]]
+
+        for j in 1:N
+            Xj = @SVector [pts[1,j], pts[2,j], pts[3,j]]
+
+            if wall
+                regularised_blakelet!(S, S2, xi, Xj; eps=eps)
+            else
+                R = xi - Xj
+                regularised_stokeslet!(S, R; eps=eps)
+            end
+
+            for p in 1:3, q in 1:3
+                A[3i-3+p, 3j-3+q] -= S[p,q]
+            end
+        end
+
+        # Translation columns
+        for p in 1:3
+            A[3i-3+p, end-6+p] = -one(T)
+            diffvec[p] = pts[p,i] - x0[p]
+        end
+
+        # Rotation columns
+        K = skew_symmetric_static(diffvec)
+        for p in 1:3, q in 1:3
+            A[3i-3+p, end-3+q] = K[p,q]
+        end
+    end
+
+    # Scale the kernel block
+    @inbounds A[1:3N, 1:3N] ./= (-T(8) * T(π) * μ)
+
+    # Net force / net torque rows
+    @inbounds for j in 1:N
+        # ∑ f_j
+        for d in 1:3
+            A[end-6+d, 3j-3+d] += one(T)
+        end
+
+        # ∑ r_j × f_j
+        rj = SVector{3,T}(pts[1,j], pts[2,j], pts[3,j]) - x0
+        Kj = skew_symmetric_static(rj)
+        for p in 1:3, q in 1:3
+            A[end-3+p, 3j-3+q] += Kj[p,q]
+        end
+    end
+
+    return A
+end

@@ -16,9 +16,9 @@ using DSP
 
 include("maths.jl")
 include("geometry.jl")
+include("discretisations.jl")
 include("numerics.jl")
 include("boundary.jl")
-include("nearest.jl")
 include("cell_body_models.jl")
 include("cell_body_constructors.jl")
 include("flagellum_models.jl")

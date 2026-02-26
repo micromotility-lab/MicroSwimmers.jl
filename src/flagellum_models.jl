@@ -1,13 +1,17 @@
 abstract type FlagellumModel end
 
+function (m::FlagellumModel)(points::NystromDiscretisation, t::T) where {T <: Number}
+    m(points.force_pts, points.velocities, t; include_endpoints=true)
+end
+
 function (m::FlagellumModel)(points::NearestDiscretisation, t::T) where {T <: Number}
-    m(points.force_pts, points.velocity, t; include_endpoints=true)
-    m(points.quad_pts, t; include_endpoints=false)
+    m(points.force_pts, points.velocity, t; include_endpoints=false)
+    m(points.quad_pts, t; include_endpoints=true)
 end
 
 function (m::FlagellumModel)(points::NearestDiscretisation, quad_velocities::Matrix{T}, t::T) where {T <: Number}
-    m(points.force_pts, points.velocity, t; include_endpoints=true)
-    m(points.quad_pts, quad_velocities, t; include_endpoints=false)
+    m(points.force_pts, points.velocity, t; include_endpoints=false)
+    m(points.quad_pts, quad_velocities, t; include_endpoints=true)
 end
 
 function hf(model::FlagellumModel; Ns=[(2^i)*5 + 7 for i in 0:5])

@@ -69,27 +69,57 @@ mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
     wall::Bool
 end
 
+# function SwimmingProblem(
+#     S::MicroSwimmer;
+#     eps=0.01,
+#     mu=1.0,
+#     wall=false
+# )
+#     T = eltype(S.points.force_pts)
+
+#     N = length(S.points.force_pts)
+#     points = NearestDiscretisation(
+#         zeros(T, 3, S.points.N),
+#         zeros(T, 3, S.points.Q),
+#         S.points.nearest
+#     )
+#     sp = SwimmingProblem(
+#         S, points, T(eps), T(mu),
+#         LinearProblem(zeros(T, N + 6, N + 6), zeros(T, N + 6)),
+#         nothing,
+#         wall
+#     )
+#     update_boundary!(sp, zero(T))   
+#     sp
+# end
+
+_make_points(::Type{NearestDiscretisation}, S) = NearestDiscretisation(
+    zeros(eltype(S.points.force_pts), 3, S.points.N),
+    zeros(eltype(S.points.force_pts), 3, S.points.Q),
+    S.points.nearest
+)
+
+_make_points(::Type{NystromDiscretisation}, S) = NystromDiscretisation(
+    zeros(eltype(S.points.force_pts), 3, S.points.N),
+    zeros(eltype(S.points.velocities), 3, S.points.N)
+)
+
 function SwimmingProblem(
     S::MicroSwimmer;
-    eps=0.01,
-    mu=1.0,
-    wall=false
-)
+    discretisation::Type{D}=NearestDiscretisation,
+    eps=0.01, mu=1.0, wall=false
+) where {D}
     T = eltype(S.points.force_pts)
+    points = _make_points(discretisation, S)
+    N = n_unknowns(points)
 
-    N = length(S.points.force_pts)
-    points = NearestDiscretisation(
-        zeros(T, 3, S.points.N),
-        zeros(T, 3, S.points.Q),
-        S.points.nearest
-    )
     sp = SwimmingProblem(
         S, points, T(eps), T(mu),
-        LinearProblem(zeros(T, N + 6, N + 6), zeros(T, N + 6)),
+        LinearProblem(zeros(T, N+6, N+6), zeros(T, N+6)),
         nothing,
         wall
     )
-    update_boundary!(sp, zero(T))   
+    update_boundary!(sp, zero(T))
     sp
 end
 
@@ -175,9 +205,10 @@ function solve_problem!(prob::SwimmingProblem)
     swimming_matrix!(
         prob.lin_prob.A,
         prob.microswimmer.points.location,
-        prob.points.force_pts,
-        prob.points.quad_pts,
-        prob.microswimmer.points.nearest,
+        # prob.points.force_pts,
+        # prob.points.quad_pts,
+        # prob.microswimmer.points.nearest,
+        prob.points,
         prob.eps,
         μ=prob.mu,
         wall=prob.wall
@@ -311,7 +342,6 @@ function check_boundary_conditions(prob::ResistanceProblem; t=0.0)
     pts = prob.points.quad_pts
     vs = get_quad_pt_velocities(prob; t=t)
     u = FluidVelocity(prob)
-    @info "" vs u.(eachcol(pts))
     resid = norm.(u.(eachcol(pts)) .- vs)
     median(resid), maximum(resid)
 end
