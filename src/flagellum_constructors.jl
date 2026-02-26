@@ -14,8 +14,8 @@ end
 # Provide N and Q for a nearest discretisation
 function Flagellum(
     model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
-    N=23, 
-    Q=127; 
+    N::Int=23, 
+    Q::Int=127; 
     location=SVector(0., 0., 0.),
     orientation=I3,
 )
@@ -30,8 +30,8 @@ end
 
 # Only provide N for a Nystrom discretisation
 function Flagellum(
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
-    N=127;
+    model::FlagellumModel,
+    N::Int;
     location=SVector(0., 0., 0.),
     orientation=I3
 )
