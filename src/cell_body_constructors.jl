@@ -60,4 +60,27 @@ function RigidMotionBody(
     body
 end
 
+function grand_resistance_matrix(cell::CellBody; eps=0.1)
+    prob = ResistanceProblem(cell, eps=eps)
+    R = zeros(6,6)
+
+    for (i, n) in enumerate([ex, ey, ez]) 
+        reset_velocity!(cell)  
+        add_velocity!(cell, n)
+        prob = ResistanceProblem(cell, eps=eps)
+        F, T = total_force_and_torque(prob)
+        R[1:3, i] .= F
+        R[4:6, i] .= T
+        
+        reset_velocity!(cell) 
+        add_angular_velocity!(cell, n)
+        prob = ResistanceProblem(cell, eps=eps)
+        solve_problem!(prob)
+        F, T = total_force_and_torque(prob)
+        R[1:3, 3+i] .= F
+        R[4:6, 3+i] .= T
+    end
+    R
+end
+
 

@@ -19,6 +19,33 @@ function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Numb
     points
 end
 
+
+# rejection sampled version
+function fibonacci_ellipsoid_rejection(a, b, c, num_points)
+    # area element ||∂_θ r × ∂_z r|| as a function of (θ, z)
+    function area_element(θ, z)
+        r = sqrt(1 - z^2)
+        sqrt(a^2*b^2*z^2/(1-z^2 + eps()) + c^2*(a^2*sin(θ)^2 + b^2*cos(θ)^2))
+    end
+    
+    # maximum area element for rejection sampling
+    M = maximum(area_element(θ, z) 
+                for θ in range(0, 2π, 100), z in range(-0.99, 0.99, 100))
+    
+    points = zeros(3, num_points)
+    i = 0
+    while i < num_points
+        θ = 2π * rand()
+        z = 2*rand() - 1
+        r = sqrt(1 - z^2)
+        if rand() < area_element(θ, z) / M
+            i += 1
+            points[:, i] = [a*r*cos(θ), b*r*sin(θ), c*z]
+        end
+    end
+    points
+end
+
 is_inside_ellipsoid(x, center, radii; orientation=I3, tol=1e-8) = sum((orientation' * (x .- center) ./ radii) .^ 2) <= 1.0 + tol
 
 # Needs NonlinearSolve so I'm not sure whether to include just for this

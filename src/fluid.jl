@@ -5,7 +5,7 @@ struct FluidVelocity{T <: Number}
     nearest::Vector{Int}          
     eps::T
     mu::T
-    force_vals::Vector{T}         
+    force_vals::Vector{T}   # change this to AbstractVector to accept a view      
     A::Matrix{T}                  # 3×N
     wall::Bool
 end

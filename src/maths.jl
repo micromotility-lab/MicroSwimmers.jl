@@ -83,6 +83,10 @@ end
 
 (h::Helix)(ts) = helix(ts, Tuple(h))
 
+translate_helix(h::Helix, x) = Helix(
+    h.x0 + x[1], h.y0 + x[2], h.z0 + x[3],
+    h.v, h.ω, h.θ, h.ϕ, h.r, h.ψ
+)
 
 # Helix quantities
 radius(h::Helix) = h.r

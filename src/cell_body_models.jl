@@ -31,7 +31,7 @@ mutable struct EllipsoidBody{T <: Number} <: CellBodyModel
     c::T 
 end
 
-(m::EllipsoidBody)(N::Int) = [fibonacci_ellipsoid(m.a, m.b, m.c, N)]
+(m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = [pts_fn(m.a, m.b, m.c, N)]
 
 mutable struct EllipsoidalGroovedBody{T <: Number} <: CellBodyModel
     a::T
@@ -58,9 +58,9 @@ EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::
     orientation
 )
 
-function (m::EllipsoidalGroovedBody)(N::Int; tol=1e-8)  # N is the number of points per ellipse, roughly the total
+function (m::EllipsoidalGroovedBody)(N::Int; tol=1e-8, pts_fn=fibonacci_ellipsoid)  # N is the number of points per ellipse, roughly the total
     ell1 = fibonacci_ellipsoid(m.a, m.b, m.c, N)
-    ell2 = m.groove_center .+ m.orientation*fibonacci_ellipsoid(m.g_a, m.g_b, m.g_c, N)
+    ell2 = m.groove_center .+ m.orientation*pts_fn(m.g_a, m.g_b, m.g_c, N)
 
     N = m.orientation * ez
 

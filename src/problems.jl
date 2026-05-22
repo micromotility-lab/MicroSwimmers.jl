@@ -241,6 +241,7 @@ function check_boundary_conditions(prob::SwimmingProblem; t=0.0)
 
     q_vs = get_quad_pt_velocities(prob, t=t)
     V_scale = quantile(norm.(q_vs), 0.95) # median(norm.(q_vs))
+    @info "" V_scale
     resid = norm.(u.(eachcol(pts)) .- q_vs) ./ V_scale
     resid
     # median(resid), findmax(resid)
@@ -324,6 +325,10 @@ function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
     end
 end
 
+function add_rigid_body_motion!(prob::ResistanceProblem, U::AbstractVector, Ω::AbstractVector)
+    prob.points.velocity .+= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(prob.points.force_pts)))
+end
+
 function solve_problem!(prob::ResistanceProblem)
     @unpack lin_prob, points, boundary, eps, mu = prob
     resistance_matrix!(
@@ -341,9 +346,12 @@ end
 function check_boundary_conditions(prob::ResistanceProblem; t=0.0)
     pts = prob.points.quad_pts
     vs = get_quad_pt_velocities(prob; t=t)
+    V_scale = quantile(norm.(vs), 0.95) # median(norm.(q_vs))
     u = FluidVelocity(prob)
-    resid = norm.(u.(eachcol(pts)) .- vs)
-    median(resid), maximum(resid)
+    resid = norm.(u.(eachcol(pts)) .- vs) ./ V_scale
+    @info "" V_scale
+    resid
+    # median(resid), maximum(resid)
 end
 
 
