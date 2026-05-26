@@ -6,17 +6,6 @@ struct Trajectory{T<:Number}
     periodic::Bool
 end
 
-# function centred_trajectory(traj::Trajectory)
-#     c = mean(traj.x)
-#     Trajectory(
-#         traj.t,
-#         traj.x .- Ref(c),
-#         traj.b1, 
-#         traj.b2,
-#         traj.periodic
-#     )
-# end
-
 function translate_trajectory(traj::Trajectory, x)
     Trajectory(
         traj.t,
@@ -83,6 +72,7 @@ function running_mean(traj::Trajectory, radius::Int)
     rmean(v) = [mean(v[max(1,i-radius):min(n,i+radius)]) for i in 1:n]
     Trajectory(traj.t, rmean(x), rmean(b1), rmean(b2), traj.periodic)
 end
+
 """
 Use principal components of the trajectory to construct some rough helix
 parameters to use as an initial guess for a nonlinear least squares fit.
