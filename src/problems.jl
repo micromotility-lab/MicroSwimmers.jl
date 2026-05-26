@@ -325,8 +325,8 @@ function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
     end
 end
 
-function add_rigid_body_motion!(prob::ResistanceProblem, U::AbstractVector, Ω::AbstractVector)
-    prob.points.velocity .+= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(prob.points.force_pts)))
+function add_rigid_body_motion!(prob::ResistanceProblem, U, Ω)
+    prob.points.velocity .= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(prob.points.force_pts)))
 end
 
 function solve_problem!(prob::ResistanceProblem)
