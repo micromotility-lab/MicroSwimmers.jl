@@ -96,17 +96,8 @@ function (m::FlatGroovedBody)(N::Int)
     cyl_sides, _, cyl_bottom = fibonacci_cylinder(m.g_a, m.g_b, 2m.c, N, N ÷ 2)
     cyl_sides .+= m.groove_floor_center
     cyl_bottom .+= m.groove_floor_center
-
-    # cyl_height = m.c - g_depth
-    # @info "" 0.5cyl_height
     cyl_center = m.groove_floor_center .+ [0., 0., m.c]
-    # cyl_sides, _, cyl_bottom = fibonacci_cylinder(m.g_a, m.g_b, 0.5cyl_height, N, N ÷ 2)
-    # @info "" size(cyl_sides)
-    # cyl_sides .+= cyl_centerm.
-    # @info "" size(cyl_sides)
 
-    # cyl_bottom .+= cyl_bottom
-    # return ell, cyl_sides, cyl_bottom, cyl_center
     body = reduce(
         hcat, 
         filter(x -> !is_inside_cylinder(x, cyl_center,  [m.g_a, m.g_b, m.c]), eachcol(ell))

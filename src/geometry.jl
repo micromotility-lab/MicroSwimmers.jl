@@ -20,8 +20,6 @@ function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Numb
 end
 
 
-
-
 is_inside_ellipsoid(x, center, radii; orientation=I3, tol=1e-8) = sum((orientation' * (x .- center) ./ radii) .^ 2) <= 1.0 + tol
 
 # Cylinders
