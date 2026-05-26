@@ -60,7 +60,7 @@ end
 
 mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
     microswimmer::MicroSwimmer
-    points::Discretisation  # IS THIS NECESSARY?
+    points::Discretisation
     eps::T   # regularisation parameter
     mu::T    # viscosity
 
@@ -69,57 +69,27 @@ mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
     wall::Bool
 end
 
-# function SwimmingProblem(
-#     S::MicroSwimmer;
-#     eps=0.01,
-#     mu=1.0,
-#     wall=false
-# )
-#     T = eltype(S.points.force_pts)
-
-#     N = length(S.points.force_pts)
-#     points = NearestDiscretisation(
-#         zeros(T, 3, S.points.N),
-#         zeros(T, 3, S.points.Q),
-#         S.points.nearest
-#     )
-#     sp = SwimmingProblem(
-#         S, points, T(eps), T(mu),
-#         LinearProblem(zeros(T, N + 6, N + 6), zeros(T, N + 6)),
-#         nothing,
-#         wall
-#     )
-#     update_boundary!(sp, zero(T))   
-#     sp
-# end
-
-_make_points(::Type{NearestDiscretisation}, S) = NearestDiscretisation(
-    zeros(eltype(S.points.force_pts), 3, S.points.N),
-    zeros(eltype(S.points.force_pts), 3, S.points.Q),
-    S.points.nearest
-)
-
-_make_points(::Type{NystromDiscretisation}, S) = NystromDiscretisation(
-    zeros(eltype(S.points.force_pts), 3, S.points.N),
-    zeros(eltype(S.points.velocities), 3, S.points.N)
-)
-
 function SwimmingProblem(
     S::MicroSwimmer;
-    discretisation::Type{D}=NearestDiscretisation,
-    eps=0.01, mu=1.0, wall=false
-) where {D}
+    eps=0.01,
+    mu=1.0,
+    wall=false
+)
     T = eltype(S.points.force_pts)
-    points = _make_points(discretisation, S)
-    N = n_unknowns(points)
 
+    N = length(S.points.force_pts)
+    points = NearestDiscretisation(
+        zeros(T, 3, S.points.N),
+        zeros(T, 3, S.points.Q),
+        S.points.nearest
+    )
     sp = SwimmingProblem(
         S, points, T(eps), T(mu),
-        LinearProblem(zeros(T, N+6, N+6), zeros(T, N+6)),
+        LinearProblem(zeros(T, N + 6, N + 6), zeros(T, N + 6)),
         nothing,
         wall
     )
-    update_boundary!(sp, zero(T))
+    update_boundary!(sp, zero(T))   
     sp
 end
 
@@ -183,31 +153,33 @@ function update_boundary!(prob::SwimmingProblem, t::T) where {T <: Number}
     end
 end
 
-function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::Number) where {T <: Number}
-    tT = T(t)
-    move_boundary!(prob.microswimmer, x0, B, tT)
+function move_boundary!(prob::SwimmingProblem, 
+                        x0=SVector(0.,0.,0.), 
+                        B=I3, 
+                        t=0.0)
+    x0_s = SVector{3}(x0)
+    B_s = SMatrix{3,3}(B)
+    move_boundary!(prob.microswimmer, x0_s, B_s, t)
 
     @unpack force_pts, quad_pts, velocity = prob.microswimmer.points
     @views begin
-        prob.points.force_pts .= x0 .+ B * prob.microswimmer.points.force_pts
-        prob.points.velocity .= B * prob.microswimmer.points.velocity
-        prob.points.quad_pts .= x0 .+ B * prob.microswimmer.points.quad_pts
+        prob.points.force_pts .= x0_s .+ B_s * prob.microswimmer.points.force_pts
+        prob.points.velocity .= B_s * prob.microswimmer.points.velocity
+        prob.points.quad_pts .= x0_s .+ B_s * prob.microswimmer.points.quad_pts
     end
 end
 
-function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3,T}, t::Number) where {T<:Number}
-    tT = T(t)
-    B = hcat(b1, b2, cross(b1, b2))
-    move_boundary!(prob, x0, B, tT)
+function move_boundary!(prob::SwimmingProblem, x0, b1, b2, t=0.0)
+    b1_s = SVector{3}(b1)
+    b2_s = SVector{3}(b2)
+    B = hcat(b1_s, b2_s, cross(b1_s, b2_s))
+    move_boundary!(prob, x0, B, t)
 end
 
 function solve_problem!(prob::SwimmingProblem)
     swimming_matrix!(
         prob.lin_prob.A,
         prob.microswimmer.points.location,
-        # prob.points.force_pts,
-        # prob.points.quad_pts,
-        # prob.microswimmer.points.nearest,
         prob.points,
         prob.eps,
         μ=prob.mu,
@@ -215,7 +187,7 @@ function solve_problem!(prob::SwimmingProblem)
     )
 
     @views prob.lin_prob.b[1:end-6] .= reshape(prob.points.velocity, :)
-    prob.force_vals = solve(prob.lin_prob, MKLLUFactorization())
+    prob.force_vals = solve(prob.lin_prob)
 end
 
 # Check body boundary conditions at quad_pts (fluid velocity should equal rigid body velocity)
@@ -247,6 +219,8 @@ function check_boundary_conditions(prob::SwimmingProblem; t=0.0)
     # median(resid), findmax(resid)
 end
 
+
+# Resistance problems (microswimmer fixed in space)
 mutable struct ResistanceProblem{T<:Number} <: InstantaneousProblem
     boundary::FluidBoundary
     points::Discretisation
@@ -351,7 +325,6 @@ function check_boundary_conditions(prob::ResistanceProblem; t=0.0)
     resid = norm.(u.(eachcol(pts)) .- vs) ./ V_scale
     @info "" V_scale
     resid
-    # median(resid), maximum(resid)
 end
 
 
@@ -413,7 +386,7 @@ function solve_problem!(prob::SwimmingTrajectoryProblem; method=Tsit5(), periodi
     prob.traj = Trajectory(sol.t, x, b1, b2, periodic)
 end
 
-function get_sol!(prob::SwimmingTrajectoryProblem)
+function get_sol(prob::SwimmingTrajectoryProblem)
     solve(prob.ode_prob, Tsit5()).u
 end
 
@@ -430,8 +403,7 @@ function move_boundary!(prob::SwimmingTrajectoryProblem, t_ind::Int)
     move_boundary!(prob.swimming_problem, traj.x[t_ind], traj.b1[t_ind], traj.b2[t_ind], traj.t[t_ind])
 end
 
-# Change to ParticleTrajectoryResistanceProblem and do the same for swimming
-
+# only implemented for resistance problems currently
 mutable struct ParticleTrajectoryProblem{T<:Number} <: Problem
     resistance_problem::ResistanceProblem{T}
     ode_prob::ODEProblem
