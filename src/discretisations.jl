@@ -18,18 +18,21 @@ n_unknowns(points) = 3 * n_traction_nodes(points)
 
 
 # Constructors
-NearestDiscretisation(N::Int, Q::Int; location=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
+NearestDiscretisation(N::Int, Q::Int; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
     N,
     Q,
     SVector{3}(location),
     SMatrix{3,3}(orientation),
-    zeros(T, 3, N),
-    zeros(T, 3, N),
-    zeros(T, 3, Q),
+    zeros(3, N),
+    zeros(3, N),
+    zeros(3, Q),
     zeros(Int, Q)
 )
     
-NearestDiscretisation(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T}; location=SVector(0.,0.,0.), orientation=I3) where {T <: Number} = NearestDiscretisation(
+NearestDiscretisation(force_pts::AbstractMatrix, quad_pts::AbstractMatrix; 
+    location=SVector(0.,0.,0.), 
+    orientation=I3
+) = NearestDiscretisation(
     size(force_pts, 2),
     size(quad_pts, 2),
     location,
@@ -40,7 +43,10 @@ NearestDiscretisation(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T};
     nearest_neighbour(force_pts, quad_pts)
 )
 
-NearestDiscretisation(force_pts, quad_pts, nearest; location=SVector(0.,0.,0.), orientation=I3) = NearestDiscretisation(
+NearestDiscretisation(force_pts, quad_pts, nearest; 
+    location=SVector(0.,0.,0.), 
+    orientation=I3
+) = NearestDiscretisation(
     size(force_pts, 2),
     size(quad_pts, 2),
     location,
