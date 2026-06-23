@@ -1,6 +1,12 @@
 abstract type Model end
 abstract type CellBodyModel <: Model end
 
+function (m::CellBodyModel)(disc::NearestDiscretisation, t)
+      T = eltype(eltype(disc.force_pts))
+      m(disc.force_pts, disc.velocity, T(t))
+      m(disc.quad_pts, T(t))
+  end
+
 # Nearest spacing helper functions for cell bodies
 
 function hf(model::CellBodyModel; Ns=[113, 2*113+7, 4*113+7, 8*113+7])

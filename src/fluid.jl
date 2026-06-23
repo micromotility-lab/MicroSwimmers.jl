@@ -1,7 +1,7 @@
 # Calculate the velocity at an arbitrary point in the fluid
 
 struct FluidVelocity{T <: Number}
-    quad_pts::Matrix{T}
+    quad_pts::Vector{SVector{3,T}}
     nearest::Vector{Int}          
     eps::T
     mu::T
@@ -12,11 +12,11 @@ end
 
 function FluidVelocity(prob::InstantaneousProblem)
     check_solved!(prob)
-    N = length(prob.points.force_pts)
+    N = length(prob.disc.force_pts)
     A = zeros(3, N)
     FluidVelocity(
-        prob.points.quad_pts,
-        prob.points.nearest,
+        prob.disc.quad_pts,
+        prob.disc.nearest,
         prob.eps,
         prob.mu,
         prob.force_vals[1:N], # leave out U and Ω for SwimmingProblem

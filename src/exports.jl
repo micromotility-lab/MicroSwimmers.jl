@@ -8,7 +8,7 @@ export spacing
 # Core types
 export FluidBoundary, update_boundary!, move_boundary!
 export Frame
-export Discretisation, NewNearestDiscretisation, NystromDiscretisation
+export Discretisation, NearestDiscretisation, NystromDiscretisation
 export nf, nq
 export Model, FlagellumModel, CellBodyModel
 export Part, MicroSwimmer
@@ -25,7 +25,7 @@ export RegStokeslet, regularised_stokeslet!, regularised_blakelet!
 export assemble!, assemble_swimming!
 
 # Problems
-export SwimmingProblem, NewResistanceProblem, SwimmingTrajectoryProblem
+export SwimmingProblem, ResistanceProblem, SwimmingTrajectoryProblem, ParticleTrajectoryProblem
 export solve_problem!
 export get_U, get_Ω, get_force_pts, get_forces
 

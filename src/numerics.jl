@@ -250,7 +250,7 @@ function swimming_matrix!(
     swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; μ=μ, wall=wall)
 end
 
-assemble!(A, disc::NewNearestDiscretisation, kernel; μ=one(eltype(A))) =
+assemble!(A, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
     assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
 
 assemble!(A, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
@@ -272,7 +272,7 @@ function assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
 end
 
 # Dispatch wrappers for assemble_swimming! — same pattern as assemble!
-assemble_swimming!(A, x0, disc::NewNearestDiscretisation, kernel; μ=one(eltype(A))) =
+assemble_swimming!(A, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
     assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
 
 assemble_swimming!(A, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =

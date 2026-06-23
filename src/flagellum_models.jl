@@ -1,563 +1,568 @@
 abstract type FlagellumModel <: Model end
 
-function (m::FlagellumModel)(points::NystromDiscretisation, t::T) where {T <: Number}
-    m(points.force_pts, points.velocities, t; include_endpoints=true)
+# ============================================================================
+#  Flagellum waveform models
+#
+#  Each concrete model supplies ONLY the geometry through two methods:
+#
+#      unit_tangent(s, t, m)        -> SVector{3,T}                  (t̂)
+#      unit_tangent_and_dt(s, t, m) -> (SVector{3,T}, SVector{3,T})  (t̂, ∂t̂/∂t)
+#
+#  with s the fractional arclength on [0,1] and t̂ a UNIT tangent (so the
+#  centreline stays arclength-parameterised: |t̂| ≡ 1 ⇒ BEM nodes evenly
+#  spaced).  The shared integrator below turns those into positions and
+#  velocities by cumulative trapezoid, handling the base node and the
+#  force-point (open) vs quad-point (closed) endpoint rules in one place.
+#
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+#  Shared discretisation + integrator
+# ---------------------------------------------------------------------------
+
+# Starting station and step for the cumulative trapezoid.
+#   include_endpoints=true  : closed rule, nodes at s = 0, 1/(N-1), …, 1   (quad pts)
+#   include_endpoints=false : open rule,   nodes at s = ds, 2ds, …,        (force pts)
+function get_s0_and_ds(T::Type, N::Int, include_endpoints::Bool)
+    include_endpoints ? (T(0), T(1) / T(N - 1)) : (T(1) / T(N + 1), T(1) / T(N + 1))
 end
 
-function (m::FlagellumModel)(points::NearestDiscretisation, t::T) where {T <: Number}
-    m(points.force_pts, points.velocity, t; include_endpoints=false)
-    m(points.quad_pts, t; include_endpoints=true)
+# position only
+@inline function integrate_centreline!(points::Vector{SVector{3,T}},
+                                       m::FlagellumModel, t::T;
+                                       include_endpoints::Bool) where {T <: Number}
+    N = length(points)
+    s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
+    half_L_ds  = T(0.5) * m.L * ds
+
+    τ_prev = unit_tangent(s_prev, t, m)
+
+    if include_endpoints
+        points[1] = zero(SVector{3,T})
+    else
+        τ0 = unit_tangent(zero(T), t, m)              # integrate the first panel from s=0
+        points[1] = (τ0 + τ_prev) * half_L_ds
+    end
+
+    @inbounds for i in 2:N
+        s = s_prev + ds
+        τ = unit_tangent(s, t, m)
+        points[i] = points[i-1] + (τ_prev + τ) * half_L_ds
+        s_prev, τ_prev = s, τ
+    end
+    return points
 end
 
+# position + velocity
+@inline function integrate_centreline!(points::Vector{SVector{3,T}},
+                                       velocities::Vector{SVector{3,T}},
+                                       m::FlagellumModel, t::T;
+                                       include_endpoints::Bool) where {T <: Number}
+    N = length(points)
+    s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
+    half_L_ds  = T(0.5) * m.L * ds
+
+    τ_prev, τ̇_prev = unit_tangent_and_dt(s_prev, t, m)
+
+    if include_endpoints
+        points[1]     = zero(SVector{3,T})
+        velocities[1] = zero(SVector{3,T})
+    else
+        τ0, τ̇0 = unit_tangent_and_dt(zero(T), t, m)
+        points[1]     = (τ0  + τ_prev)  * half_L_ds
+        velocities[1] = (τ̇0 + τ̇_prev) * half_L_ds
+    end
+
+    @inbounds for i in 2:N
+        s = s_prev + ds
+        τ, τ̇ = unit_tangent_and_dt(s, t, m)
+        points[i]     = points[i-1]     + (τ_prev  + τ)  * half_L_ds
+        velocities[i] = velocities[i-1] + (τ̇_prev + τ̇) * half_L_ds
+        s_prev, τ_prev, τ̇_prev = s, τ, τ̇
+    end
+    return points, velocities
+end
+
+# Generic call surface — no model writes loop code.
+@inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, t::T;
+                            include_endpoints::Bool=false) where {T<:Number} =
+    integrate_centreline!(points, m, t; include_endpoints)
+
+@inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}},
+                            t::T; include_endpoints::Bool=false) where {T<:Number} =
+    integrate_centreline!(points, velocities, m, t; include_endpoints)
+
+# Discretisation glue (force pts → open rule, quad pts → closed rule).
+function (m::FlagellumModel)(disc::NearestDiscretisation, t::T) where {T <: Number}
+    m(disc.force_pts, disc.velocity, t; include_endpoints=false)
+    m(disc.quad_pts,                 t; include_endpoints=true)
+end
+
+# for use if quadrature point velocities are also required
 function (m::FlagellumModel)(points::NearestDiscretisation, quad_velocities::Matrix{T}, t::T) where {T <: Number}
     m(points.force_pts, points.velocity, t; include_endpoints=false)
-    m(points.quad_pts, quad_velocities, t; include_endpoints=true)
+    m(points.quad_pts, quad_velocities, t;  include_endpoints=true)
 end
 
-function hf(model::FlagellumModel; Ns=[(2^i)*5 + 7 for i in 0:5])
-    hfs = []
-    for N in Ns
-        f = Flagellum(model, N, 4*N+7)
-        push!(hfs, hf(f.points))
-    end
-    hfs
-end
-
-function hq(model::FlagellumModel; Qs=[(2^i)*20 + 7 for i in 1:6])
-    hqs = []
-    for Q in Qs
-        f = Flagellum(model, Q ÷ 5 - 7, Q)
-        push!(hqs, hq(f.points))
-    end
-    hqs
-end
-
-function (m::FlagellumModel)(points::TubeFlagellumNearestDiscretisation, t::T) where {T <: Number}
-    @unpack force_pts, velocity, quad_pts, N_cs, Q_cs, radius = points
-    m(force_pts, velocity, N_cs, t; radius=radius, include_endpoints=false)
-    m(quad_pts, Q_cs, t; radius=radius, include_endpoints=true)
-end
-
-function (m::FlagellumModel)(points::LineTubeFlagellumNearestDiscretisation, t::T) where {T <: Number}
-    @unpack force_pts, velocity, quad_pts, Q_cs, radius = points
-    m(force_pts, velocity, t; include_endpoints=false)
-    m(quad_pts, Q_cs, t; radius=radius, include_endpoints=true)
-end
-
-
-# function(m::FlagellumModel)(points::VanedFlagellumNearestDiscretisation, t::T) where {T <: Number}
-#     @unpack force_pts, velocity, quad_pts, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height = points
-
-#     m(force_pts, velocity, N_f, N_v, N_start, N_height, t)
-#     m(quad_pts, Q_f, Q_v, Q_start, Q_height, t)
-# end
-
-"""Flagellum with a vane (only extends in the z direction currently)"""
-function (m::FlagellumModel)(
-    points::AbstractMatrix,
-    N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::Number
-)
-    f_points = @view points[:,1:N_f]
-    m(f_points, t)  # Fill flagellum points and velocities
-    # Fill vane
-    for i in 1:height
-        cstart = N_f + (i-1)*N_v + 1
-        cend   = N_f + i*N_v
-        
-        @views begin
-            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
-            points[3, cstart:cend]   .= -i*m.L / N_f
-        end
-    end
-end
-
-function (m::FlagellumModel)(
-    points::AbstractMatrix, velocities::AbstractMatrix, 
-    N_f::Int, N_v::Int, start::Int, height::Int, 
-    t::Number; include_endpoints=false
-)
-    f_points = @view points[:,1:N_f]
-    f_velocities = @view velocities[:,1:N_f]
-    m(f_points, f_velocities, t, include_endpoints=include_endpoints)  # Fill flagellum points and velocities
-    
-    # Fill vane
-    for i in 1:height
-        cstart = N_f + (i-1)*N_v + 1
-        cend   = N_f + i*N_v
-        
-        @views begin
-            points[1:2, cstart:cend] .= points[1:2, start:start+N_v-1]
-            points[3, cstart:cend]   .= -i*m.L / N_f
-            velocities[1:2, cstart:cend]  .= velocities[1:2, start:start+N_v-1]
-        end
-    end
-end
-
-
-
-## 2D flagella models
-
-function get_s0_and_ds(T::Type, N::Int, include_endpoints::Bool)
-    if include_endpoints
-        return (T(0),  T(1) / T(N-1))
-    else
-        return (T(1) / T(N+1), T(1) / T(N+1))
-    end
-end  
-
+# ===========================================================================
+#  1. PlanarFlagellum  — planar travelling wave
+#       θ(s,t) = C·s + A(s)·cos(ωt − ϕs + δ),   A(s) = R₀ + R₁·sin(k s)
+# ===========================================================================
 mutable struct PlanarFlagellum{T <: Number} <: FlagellumModel
     L::T
-    C::T
-    R₀::T
-    R₁::T
-    k::T
-    ϕ::T
-    ω::T
-    δ::T
+    C::T        # static curvature (accumulated over fractional s)
+    R₀::T       # base amplitude
+    R₁::T       # amplitude modulation
+    k::T        # amplitude wavenumber
+    ϕ::T        # phase gradient (sets wavelength)
+    ω::T        # beat frequency
+    δ::T        # phase offset
 end
 
-@inline function tangent_angle(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
-    θ₁ = m.R₀ + m.R₁*sin(m.k*s)
-    m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ)
+@inline function unit_tangent(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+    A = m.R₀ + m.R₁*sin(m.k*s)
+    θ = m.C*s + A*cos(m.ω*t - m.ϕ*s + m.δ)
+    SVector(cos(θ), sin(θ), zero(T))
 end
 
-@inline function tangent_angle_and_velocity(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
-    θ₁ = m.R₀ + m.R₁*sin(m.k*s)
-    m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ), m.ω*θ₁*sin(m.ω*t - m.ϕ*s + m.δ)
+@inline function unit_tangent_and_dt(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+    A = m.R₀ + m.R₁*sin(m.k*s)
+    φ = m.ω*t - m.ϕ*s + m.δ
+    θ, θdot = m.C*s + A*cos(φ),  -m.ω*A*sin(φ) 
+    (SVector(cos(θ), sin(θ), zero(T)), θdot * SVector(-sin(θ), cos(θ), zero(T)))
 end
 
-
-@inline function orientation_integrands(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
-    θ = tangent_angle(s, t, m)
-    (sin(θ), cos(θ))
-end
-
-@inline function orientation_and_velocity_integrands(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
-    θ, θdot = tangent_angle_and_velocity(s, t, m)
-    (sin(θ), cos(θ), θdot)
-end
-
-(m::PlanarFlagellum)(points::AbstractVector{T}, t::T) where {T <: Number} = tangent_angle(range(0, L, size(points,2)), t, m)
-
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, t::T; include_endpoints::Bool=false) where {T <: Number}
-    # ds = T(1/(N-1))
-    
-    # # build the s-grid in [0,1]
-    # if include_endpoints
-    #     ds = T(1) / T(N-1)
-    #     s_prev = T(0)
-    # else
-    #     ds = T(1) / T(N+1)
-    #     s_prev = ds                    # first interior node
-    # end
-    N = size(points, 2)
-    s_prev, ds = get_s0_and_ds(T, N, include_endpoints) 
-    half_L_ds = 0.5*m.L*ds
-    
-    # s_prev = T(0.0)
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
-
-    if include_endpoints == false
-        sinθ0, cosθ0 = orientation_integrands(zero(T), t, m)
-        points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
-        points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
-    end
-
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ = orientation_integrands(s, t, m)
-
-        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
-
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-    end
-end
-
-
-function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T; include_endpoints::Bool=false) where {T <: Number}
-    # tT = T(t) # promote t for autodiff
-    N = size(points,2)
-    s_prev, ds = get_s0_and_ds(T, N, include_endpoints) 
-
-    # ds = T(1/(N-1))
-    half_L_ds = 0.5*m.L*ds
-
-    # s_prev = T(0.0)
-    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, t, m)  
-    if include_endpoints == false
-        sinθ0, cosθ0, ωθ₁sin0 = orientation_and_velocity_integrands(zero(T), t, m)
-        points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
-        points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
-        velocities[1,1] = (ωθ₁sin_prev*sinθ_prev + ωθ₁sin0*sinθ0) * half_L_ds
-        velocities[2,1] =  - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin0*cosθ0) * half_L_ds
-    end
-    
-    
-    
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, t, m)  
-
-        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
-        velocities[1,i] = velocities[1,i-1] + (ωθ₁sin_prev*sinθ_prev + ωθ₁sin*sinθ) * half_L_ds
-        velocities[2,i] = velocities[2,i-1] - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin*cosθ) * half_L_ds
-
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-        ωθ₁sin_prev = ωθ₁sin
-    end
-end
-
-function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
-    N = size(tube_points, 2) ÷ M
-    ds = 1 / (N - 1)
-    half_L_ds = 0.5 * m.L * ds
-
-    # Precompute circle angles
-    angles = range(0, 2π, length=M+1)[1:end-1]  # avoid duplication at 2π
-    cosα = cos.(angles)
-    sinα = sin.(angles)
-
-    # Set initial centerline point
-    x, y = zero(T), zero(T)
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
-
-    @inbounds for i in 1:N
-        # Arclength
-        s = (i - 1) * ds
-        sinθ, cosθ = orientation_integrands(s, t, m)
-
-        if i > 1
-            x += (cosθ_prev + cosθ) * half_L_ds
-            y += (sinθ_prev + sinθ) * half_L_ds
-        end
-
-        # Normal and binormal (fixed in plane)
-        normal = SVector(-sinθ, cosθ, 0.0)
-        binorm = SVector(0.0, 0.0, 1.0)
-
-        # Center point of this cross-section
-        center = SVector(x, y, 0.0)
-
-        # Fill M points around the circle
-        for j in 1:M
-            offset =  radius * (cosα[j] * normal + sinα[j] * binorm)
-            idx = (i - 1) * M + j
-            tube_points[:, idx] = center + offset
-        end
-
-        # Save for next iteration
-        s_prev = s
-        sinθ_prev = sinθ
-        cosθ_prev = cosθ
-    end
-end
-
-function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, tube_vel::AbstractMatrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
-    N = size(tube_points, 2) ÷ M
-    ds = 1 / (N - 1)
-    half_L_ds = 0.5 * m.L * ds
-
-    # Precompute circle angles
-    angles = range(0, 2π, length=M+1)[1:end-1]  # avoid duplication at 2π
-    cosα = cos.(angles)
-    sinα = sin.(angles)
-
-    # Initialise centerline position and velocities
-    x, y = zero(T), zero(T)
-    vx, vy = zero(T), zero(T)
-
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev, ωθ₁sin_prev = orientation_and_velocity_integrands(s_prev, t, m)
-
-    @inbounds for i in 1:N
-        s = (i - 1) * ds
-        sinθ, cosθ, ωθ₁sin = orientation_and_velocity_integrands(s, t, m)
-
-        # Update centerline position (x, y)
-        if i > 1
-            dx = (cosθ_prev + cosθ) * half_L_ds
-            dy = (sinθ_prev + sinθ) * half_L_ds
-            x += dx
-            y += dy
-
-            # Update centerline velocities (vx, vy)
-            dvx = (ωθ₁sin_prev*sinθ_prev + ωθ₁sin*sinθ) * half_L_ds
-            dvy = -(ωθ₁sin_prev*cosθ_prev + ωθ₁sin*cosθ) * half_L_ds
-            vx += dvx
-            vy += dvy
-        end
-
-        # Frame vectors (fixed in the x-y plane)
-        normal  = SVector(-sinθ, cosθ, 0.0)
-        binorm  = SVector(0.0, 0.0, 1.0)
-        center  = SVector(x, y, 0.0)
-        v_center = SVector(vx, vy, 0.0)
-
-        # Angular velocity vector
-        ω_vec = ωθ₁sin * binorm  # binorm is z-hat
-
-        # Fill tube points and velocities
-        for j in 1:M
-            offset = radius * (cosα[j] * normal + sinα[j] * binorm)
-            idx = (i - 1) * M + j
-            tube_points[:, idx] = center + offset
-            tube_vel[:, idx] = v_center + cross(ω_vec, offset)
-        end
-
-        # Save for next step
-        s_prev = s
-        sinθ_prev = sinθ
-        cosθ_prev = cosθ
-        ωθ₁sin_prev = ωθ₁sin
-    end
-end
-
-mutable struct StandingWaveFlagellum{T <: Number} <: FlagellumModel
-    # Arclength discretization
-    L::T
-    C::T
-    A01::T
-    ϕ01::T
-    A11::T
-    ϕ11::T
-    A21::T
-    ϕ21::T
-    A31::T
-    ϕ31::T
-    ω::T
-end
-
-@inline function tangent_angle(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
-    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
-    m.C*s + real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space))
-end
-
-@inline function tangent_angle_and_velocity(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
-    θ_space = m.A01*exp(1.0im*m.ϕ01)*sin(π*s/2) + m.A11*exp(1.0im*m.ϕ11)*sin(3π*s/2) + m.A21*exp(1.0im*m.ϕ21)*sin(5π*s/2) + m.A31*exp(1.0im*m.ϕ31)*sin(7π*s/2)
-    m.C*s + real(exp(1im*m.ω*t)*θ_space + exp(-1im*m.ω*t)*conj(θ_space)), real(1im*m.ω*exp(1im*m.ω*t)*θ_space - 1im*m.ω*exp(-1im*m.ω*t)*conj(θ_space)) 
-end
-
-
-@inline function orientation_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
-    θ = tangent_angle(s, t, m)
-    (sin(θ), cos(θ))
-end
-
-@inline function orientation_and_velocity_integrands(s::T, t::T, m::StandingWaveFlagellum) where {T <: Number}
-    θ, θdot = tangent_angle_and_velocity(s, t, m)
-    (sin(θ), cos(θ), θdot)
-end
-
-function (m::StandingWaveFlagellum)(points::AbstractVector{T}, t::T) where {T <: Number}
-    s = range(0, 1, length(points))
-    for i in eachindex(points)
-        points[i] = tangent_angle(s[i], t, m)
-    end
-end
-
-function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, t::T; include_endpoints=false) where {T <: Number}
-    N = size(points, 2)
-    s_prev, ds = get_s0_and_ds(T, N, include_endpoints) 
-    half_L_ds = 0.5*m.L*ds
-    
-    # s_prev = T(0.0)
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
-
-    if include_endpoints == false
-        sinθ0, cosθ0 = orientation_integrands(zero(T), t, m)
-        points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
-        points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
-    end
-    half_L_ds = 0.5*m.L*ds
-
-    # s_prev = T(0.0)
-    sinθ_prev, cosθ_prev = orientation_integrands(s_prev, t, m)
-    
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ = orientation_integrands(s, t, m)
-
-        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
-
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-    end
-end
-
-
-function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T; include_endpoints=false) where {T <: Number}
-    # tT = T(t) # promote t for autodiff
-    # N = size(points,2)
-    # ds = T(1/(N-1))
-    # half_L_ds = 0.5*m.L*ds
-
-    # s_prev = T(0.0)
-    # sinθ_prev, cosθ_prev, θdot_prev = orientation_and_velocity_integrands(s_prev, t, m)  
-
-    N = size(points,2)
-    s_prev, ds = get_s0_and_ds(T, N, include_endpoints) 
-
-    half_L_ds = 0.5*m.L*ds
-
-    sinθ_prev, cosθ_prev, θdot_prev = orientation_and_velocity_integrands(s_prev, t, m)  
-    if include_endpoints == false
-        sinθ0, cosθ0, θdot0 = orientation_and_velocity_integrands(zero(T), t, m)
-        points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
-        points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
-        velocities[1,1] = (θdot_prev*sinθ_prev + θdot0*sinθ0) * half_L_ds
-        velocities[1,2] =  - (θdot_prev*cosθ_prev + θdot0*cosθ0) * half_L_ds
-    end
-    
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ, θdot = orientation_and_velocity_integrands(s, t, m)  
-
-        points[1,i] = points[1,i-1] + (cosθ_prev + cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (sinθ_prev + sinθ) * half_L_ds
-        velocities[1,i] = velocities[1,i-1] - (θdot_prev*sinθ_prev + θdot*sinθ) * half_L_ds
-        velocities[2,i] = velocities[2,i-1] + (θdot_prev*cosθ_prev + θdot*cosθ) * half_L_ds
-
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-        θdot_prev = θdot
-    end
-end
-
-## 3D flagella models
-
+# ===========================================================================
+#  2. QuasiPlanarFlagellum — planar travelling beat with a STATIC out-of-plane
+#     lean.  t̂ = w·(cosθ, sinθ, C_z·s),  w = 1/√(1+(C_z s)²)  (keeps |t̂|=1).
+#     z carries no t ⇒ no z-velocity.  Physical units: δ,λ are lengths.
+#       θ(s,t) = A·(1 − e^{−sL/δ})·sin(ωt − 2π sL/λ) + C·sL
+# ===========================================================================
 mutable struct QuasiPlanarFlagellum{T <: Number} <: FlagellumModel
-    L::T      # Flagellum length
-    ω::T      # Beat frequency
-    A::T      # Amplitude
-    δ::T      # Amplitude modulation
-    λ::T      # Wavelength
-    C::T      # Static curvature
-    C_z::T    # Out-of-plane modulation
+    L::T
+    ω::T        # beat frequency
+    A::T        # angular amplitude
+    δ::T        # base ramp length
+    λ::T        # wavelength
+    C::T        # static curvature (1/length)
+    C_z::T      # out-of-plane lean (tan of tip elevation)
 end
 
-@inline function orientation_integrands(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
-    θ = m.A * (1 - exp(-s*m.L/m.δ)) * sin(m.ω*t - 2π*s*m.L/m.λ) + m.C*s*m.L
-    (sin(θ), cos(θ), 1 / sqrt(1 + (s*m.C_z)^2))
+@inline function unit_tangent(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
+    sL    = s*m.L
+    θ     = m.A*(1 - exp(-sL/m.δ))*sin(m.ω*t - 2*T(π)*sL/m.λ) + m.C*sL
+    scale = one(T)/sqrt(one(T) + (s*m.C_z)^2)
+    scale * SVector(cos(θ), sin(θ), m.C_z*s)
 end
 
-@inline function orientation_and_velocity_integrands(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
-    θ = m.A * (1 - exp(-s*m.L/m.δ)) * sin(m.ω*t - 2π*s*m.L/m.λ) + m.C*s*m.L
-    θdot = m.ω*m.A*(1 - exp(-s*m.L/m.δ)) * cos(m.ω*t - 2π*s*m.L/m.λ)
-    (sin(θ), cos(θ), θdot, 1 / sqrt(1 + (s*m.C_z)^2))
+@inline function unit_tangent_and_dt(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
+    sL    = s*m.L
+    φ     = m.ω*t - 2*T(π)*sL/m.λ
+    env   = m.A*(1 - exp(-sL/m.δ))
+    θ     = env*sin(φ) + m.C*sL
+    θ̇    = m.ω*env*cos(φ)                          # true ∂θ/∂t
+    scale = one(T)/sqrt(one(T) + (s*m.C_z)^2)
+    (scale * SVector(cos(θ), sin(θ), m.C_z*s),
+     scale*θ̇ * SVector(-sin(θ), cos(θ), zero(T)))
 end
 
-function (m::QuasiPlanarFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
-    N = size(points, 2)
-    ds = 1/(N-1)
-    half_L_ds = 0.5*m.L*ds
-
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev, invsqrt_prev = orientation_integrands(s_prev, t, m)
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ, invsqrt = orientation_integrands(s, t, m)
-        
-        points[1,i] = points[1,i-1] + (invsqrt_prev*cosθ_prev + invsqrt*cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (invsqrt_prev*sinθ_prev + invsqrt*sinθ) * half_L_ds
-        points[3,i] = points[3,i-1] + m.C_z*s*(invsqrt_prev + invsqrt) * half_L_ds
-
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-        invsqrt_prev = invsqrt
-    end
+# ===========================================================================
+#  3. ThreeDimensionalFlagellum — full 3D travelling wave.
+#     Spherical tangent  t̂ = (cosθ cosϕ, cosθ sinϕ, sinθ)  (unit-norm).
+#       ϕ : azimuth (in xy-plane),  θ : elevation above it.
+#       each angle = base-ramped travelling wave + static curvature.
+#       Δγ (elevation − azimuth phase) sets helicity: 0 planar … π/2 conical.
+#     NOTE: this model is parameterised by FREQUENCY f (with explicit 2πf);
+#           the others use angular ω. 
+# ===========================================================================
+mutable struct ThreeDimensionalFlagellum{T <: Number} <: FlagellumModel
+    L::T
+    fᵩ::T;  Aᵩ::T;  δᵩ::T;  λᵩ::T;  Cᵩ::T          # azimuthal bank
+    f_θ::T; A_θ::T; δ_θ::T; λ_θ::T; C_θ::T          # elevation bank
+    γ::T                                            # overall phase
+    Δγ::T                                           # relative phase (elev − azim)
 end
 
-function (m::QuasiPlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T) where {T <: Number}
-    N = size(points, 2)
-    ds = 1/(N-1)
-    half_L_ds = 0.5*m.L*ds
-
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev, θdot_prev,  invsqrt_prev = orientation_and_velocity_integrands(s_prev, t, m)
-
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ, θdot, invsqrt = orientation_and_velocity_integrands(s, t, m)
-
-        points[1,i] = points[1,i-1] + (invsqrt_prev*cosθ_prev + invsqrt*cosθ) * half_L_ds
-        points[2,i] = points[2,i-1] + (invsqrt_prev*sinθ_prev + invsqrt*sinθ) * half_L_ds
-        points[3,i] = points[3,i-1] + m.C_z*s*(invsqrt_prev + invsqrt) * half_L_ds
-
-        velocities[1,i] = velocities[1,i-1] - (invsqrt_prev*θdot_prev*sinθ_prev + invsqrt*θdot*sinθ) * half_L_ds
-        velocities[2,i] = velocities[2,i-1] + (invsqrt_prev*θdot_prev*cosθ_prev + invsqrt*θdot*cosθ) * half_L_ds
-
-        s_prev       = s
-        sinθ_prev    = sinθ 
-        cosθ_prev    = cosθ
-        θdot_prev    = θdot
-        invsqrt_prev = invsqrt
-    end
+@inline function unit_tangent(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
+    sL = s*m.L
+    θ  = m.A_θ*(1 - exp(-sL/m.δ_θ))*sin(2*T(π)*m.f_θ*t - 2*T(π)*sL/m.λ_θ + m.γ + m.Δγ) + m.C_θ*sL
+    ϕ  = m.Aᵩ *(1 - exp(-sL/m.δᵩ ))*sin(2*T(π)*m.fᵩ *t - 2*T(π)*sL/m.λᵩ + m.γ)         + m.Cᵩ*sL
+    sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+    SVector(cθ*cϕ, cθ*sϕ, sθ)
 end
 
-# Three dimensional flagellum based on the model used in Suzuki-Tellier et. al 2024
+@inline function unit_tangent_and_dt(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
+    sL   = s*m.L
+    envθ = m.A_θ*(1 - exp(-sL/m.δ_θ))
+    envϕ = m.Aᵩ *(1 - exp(-sL/m.δᵩ ))
+    φθ   = 2*T(π)*m.f_θ*t - 2*T(π)*sL/m.λ_θ + m.γ + m.Δγ
+    φϕ   = 2*T(π)*m.fᵩ *t - 2*T(π)*sL/m.λᵩ + m.γ
+    θ    = envθ*sin(φθ) + m.C_θ*sL
+    ϕ    = envϕ*sin(φϕ) + m.Cᵩ*sL
+    θ̇   = envθ * 2*T(π)*m.f_θ * cos(φθ)            # true ∂θ/∂t
+    ϕ̇   = envϕ * 2*T(π)*m.fᵩ  * cos(φϕ)            # true ∂ϕ/∂t
 
-# mutable struct ThreeDimensionalFlagellum{T <: Number}
-#     ## Waveform parameters
-#     L::Float64      # Flagellum length
-#     fᵩ::Float64      # Azimuthal beat frequency
-#     Aᵩ::Float64     # Azimuthal amplitude
-#     δᵩ::Float64     # Azimuthal amplitude modulation
-#     λᵩ::Float64     # Azimuthal Wavelength
-#     Cᵩ::Float64     # Azimuthal static curvature
+    sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+    τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
+    τ̇ = θ̇ * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +         # ∂t̂/∂θ
+         ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))      # ∂t̂/∂ϕ
+    (τ, τ̇)
+end
 
-#     f_θ::Float64    # Polar beat frequency
-#     A_θ::Float64    # Polar amplitude
-#     δ_θ::Float64    # Polar amplitude modulation
-#     λ_θ::Float64    # Polar wavelength
-#     C_θ::Float64    # Polar static curvature
+# ===========================================================================
+#  Standing-wave mode machinery (shared by the two standing-wave models)
+#
+#  One angle bank, equivalent to the complex form
+#     Re[e^{iωt}θ_space + e^{-iωt}conj(θ_space)],  θ_space = Σ Aₙ e^{iφₙ} bₙ(s):
+#       angle = C·s + 2 Σ Aₙ cos(ωt+φₙ) bₙ(s)
+#       rate  =      −2ω Σ Aₙ sin(ωt+φₙ) bₙ(s)
+#  with the clamped-base spatial modes bₙ(s) = sin((2n−1)π s/2), n = 1..4.
+# ===========================================================================
+@inline _modes(s::T) where {T<:Number} =
+    SVector(sin(T(π)*s/2), sin(3*T(π)*s/2), sin(5*T(π)*s/2), sin(7*T(π)*s/2))
 
-#     γ::Float64      # overall phase 
-#     Δγ::Float64     # relative phase   
+@inline function _bank_angle(s::T, t::T, ω::T, C::T,
+                             A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+    b  = _modes(s)
+    ωt = ω*t
+    c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+    C*s + 2*sum(A .* c .* b)
+end
+
+@inline function _bank_angle_and_rate(s::T, t::T, ω::T, C::T,
+                                      A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+    b  = _modes(s)
+    ωt = ω*t
+    c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+    sn = SVector(sin(ωt+φ[1]), sin(ωt+φ[2]), sin(ωt+φ[3]), sin(ωt+φ[4]))
+    ( C*s + 2*sum(A .* c .* b),  -2*ω*sum(A .* sn .* b) )
+end
+
+# ===========================================================================
+#  4. PlanarStandingWaveFlagellum — single modal bank, in-plane (z ≡ 0).
+# ===========================================================================
+mutable struct PlanarStandingWaveFlagellum{T <: Number} <: FlagellumModel
+    L::T
+    ω::T
+    C::T                       # static curvature
+    A::SVector{4,T}            # mode amplitudes
+    ϕ::SVector{4,T}            # mode phases
+end
+
+@inline function unit_tangent(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number}
+    θ = _bank_angle(s, t, m.ω, m.C, m.A, m.ϕ)
+    SVector(cos(θ), sin(θ), zero(T))
+end
+
+@inline function unit_tangent_and_dt(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number}
+    θ, θdot = _bank_angle_and_rate(s, t, m.ω, m.C, m.A, m.ϕ)
+    (SVector(cos(θ), sin(θ), zero(T)),
+     θdot * SVector(-sin(θ), cos(θ), zero(T)))
+end
+
+# ===========================================================================
+#  5. ThreeDimensionalStandingWaveFlagellum — two independent modal banks.
+#     Single beat frequency ω; helicity set by the phase offset between the
+#     elevation (θ) and azimuth (ϕ) banks.  t̂ spherical ⇒ unit-norm.
+# ===========================================================================
+mutable struct ThreeDimensionalStandingWaveFlagellum{T <: Number} <: FlagellumModel
+    L::T
+    ω::T                       # single beat frequency
+    C_θ::T                     # elevation static curvature
+    A_θ::SVector{4,T}          # elevation mode amplitudes
+    ϕ_θ::SVector{4,T}          # elevation mode phases
+    Cᵩ::T                      # azimuth static curvature
+    Aᵩ::SVector{4,T}           # azimuth mode amplitudes
+    ϕᵩ::SVector{4,T}           # azimuth mode phases
+end
+
+@inline function unit_tangent(s::T, t::T, m::ThreeDimensionalStandingWaveFlagellum) where {T<:Number}
+    θ = _bank_angle(s, t, m.ω, m.C_θ, m.A_θ, m.ϕ_θ)
+    ϕ = _bank_angle(s, t, m.ω, m.Cᵩ, m.Aᵩ, m.ϕᵩ)
+    sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+    SVector(cθ*cϕ, cθ*sϕ, sθ)
+end
+
+@inline function unit_tangent_and_dt(s::T, t::T, m::ThreeDimensionalStandingWaveFlagellum) where {T<:Number}
+    θ, θ̇ = _bank_angle_and_rate(s, t, m.ω, m.C_θ, m.A_θ, m.ϕ_θ)
+    ϕ, ϕ̇ = _bank_angle_and_rate(s, t, m.ω, m.Cᵩ, m.Aᵩ, m.ϕᵩ)
+    sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+    τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
+    τ̇ = θ̇ * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +         # ∂t̂/∂θ
+         ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))      # ∂t̂/∂ϕ
+    (τ, τ̇)
+end
+
+# ===========================================================================
+#  Example constructors (field order reference)
+# ===========================================================================
+# planar = PlanarFlagellum(1.0, 0.0, 1.0, 0.5, 2π, 6.0, 2π, 0.0)
+#
+# quasi  = QuasiPlanarFlagellum(1.0, 2π, 0.8, 0.1, 0.7, 0.0, 0.5)
+#
+# three  = ThreeDimensionalFlagellum(1.0,
+#              1.0, 0.8, 0.1, 0.7, 0.0,      # azimuth:   fᵩ Aᵩ δᵩ λᵩ Cᵩ
+#              1.0, 0.8, 0.1, 0.7, 0.0,      # elevation: f_θ A_θ δ_θ λ_θ C_θ
+#              0.0, π/2)                     # γ, Δγ  (quadrature → helical)
+#
+# pstand = PlanarStandingWaveFlagellum(1.0, 2π, 0.0,
+#              SVector(1.0,0.5,0.3,0.15), SVector(0.0,0.6,1.2,1.8))
+#
+# tstand = ThreeDimensionalStandingWaveFlagellum(1.0, 2π,
+#              0.0, SVector(0.7,0.3,0.1,0.05), SVector(0.0,0.5,1.0,1.5),          # elevation
+#              0.0, SVector(0.7,0.3,0.1,0.05), SVector(0.0,0.5,1.0,1.5).+π/2)     # azimuth
+#
+# N = 200
+# pts = Vector{SVector{3,Float64}}(undef, N)
+# vel = Vector{SVector{3,Float64}}(undef, N)
+# three(pts, vel, 0.0; include_endpoints=true)# function (m::FlagellumModel)(points:NearestDiscretisation, t::T) where {T <: Number}
+#     m(points.force_pts, points.velocity, t; include_endpoints=false)
+#     m(points.quad_pts, t; include_endpoints=true)
 # end
 
-# @inline function get_integrands(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
-#     θ = m.A_θ * (1 - exp(-s*L/m.δ_θ))*sin(2π*m.f_θ*t - 2π*s*L/m.λ_θ + m.γ + m.Δγ) + m.C_θ*s
-#     ϕ = m.Aᵩ  * (1 - exp(-s*L/m.δᵩ))*sin(2π*m.fᵩ*t - 2π*s*L/m.λᵩ + m.γ) + m.C_θ*s
-#     (sin(θ), cos(θ), sin(ϕ), cos(ϕ))
-# end
 
+# # ── interface each FlagellumModel implements ───────────────────────────
+# #   unit_tangent(s, t, m)        -> SVector{3,T}                 (t̂)
+# #   unit_tangent_and_dt(s, t, m) -> (SVector{3,T}, SVector{3,T}) (t̂, ∂t̂/∂t)
 
-# function (m::ThreeDimensionalFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
-#     N = size(points,2)
-#     ds = 1/(N-1)
-#     half_L_ds = 0.5*m.L*ds
+# # position only
+# @inline function integrate_centreline!(points::Vector{SVector{3,T}},
+#                                        m::FlagellumModel, t::T;
+#                                        include_endpoints::Bool) where {T <: Number}
+#     N = length(points)
+#     s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
+#     half_L_ds  = T(0.5) * m.L * ds
 
-#     s_prev = 0.0
-#     sinθ_prev, cosθ_prev, sinϕ_prev, cosϕ_prev  = get_integrands(s_prev, t, m)
-    
+#     τ_prev = unit_tangent(s_prev, t, m)
+
+#     if include_endpoints
+#         points[1] = zero(SVector{3,T})
+#     else
+#         τ0 = unit_tangent(zero(T), t, m)          # integrate the base panel from s=0
+#         points[1] = (τ0 + τ_prev) * half_L_ds
+#     end
+
 #     @inbounds for i in 2:N
 #         s = s_prev + ds
-#         sinθ, cosθ, sinϕ_prev, cosϕ_prev = get_integrands(s, t, m)
-
-#         points[1,i] = points[1,i-1] + (cosθ_prev*cosϕ_prev + cosθ*cosϕ) * half_L_ds
-#         points[2,i] = points[2,i-1] + (cosθ_prev*sinϕ_prev + cosθ*sinϕ) * half_L_ds
-#         points[3,i] = points[3,i-1] + (sinθ_prev + sinθ) * half_L_ds
-
-#         s_prev      = s
-#         sinθ_prev   = sinθ
-#         cosθ_prev   = cosθ
+#         τ = unit_tangent(s, t, m)
+#         points[i] = points[i-1] + (τ_prev + τ) * half_L_ds
+#         s_prev, τ_prev = s, τ
 #     end
+#     points
 # end
 
-# function (m::ThreeDimensionalFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T)
+# # position + velocity
+# @inline function integrate_centreline!(points::Vector{SVector{3,T}},
+#                                        velocities::Vector{SVector{3,T}},
+#                                        m::FlagellumModel, t::T;
+#                                        include_endpoints::Bool) where {T <: Number}
+#     N = length(points)
+#     s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
+#     half_L_ds  = T(0.5) * m.L * ds
+
+#     τ_prev, τ̇_prev = unit_tangent_and_dt(s_prev, t, m)
+
+#     if include_endpoints
+#         points[1]     = zero(SVector{3,T})
+#         velocities[1] = zero(SVector{3,T})
+#     else
+#         τ0, τ̇0 = unit_tangent_and_dt(zero(T), t, m)
+#         points[1]     = (τ0  + τ_prev)  * half_L_ds
+#         velocities[1] = (τ̇0 + τ̇_prev) * half_L_ds
+#     end
+
+#     @inbounds for i in 2:N
+#         s = s_prev + ds
+#         τ, τ̇ = unit_tangent_and_dt(s, t, m)
+#         points[i]     = points[i-1]     + (τ_prev  + τ)  * half_L_ds
+#         velocities[i] = velocities[i-1] + (τ̇_prev + τ̇) * half_L_ds
+#         s_prev, τ_prev, τ̇_prev = s, τ, τ̇
+#     end
+#     points, velocities
+# end
+
+# @inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, t::T;
+#                             include_endpoints::Bool=false) where {T<:Number} =
+#     integrate_centreline!(points, m, t; include_endpoints)
+
+# @inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}, t::T;
+#                             include_endpoints::Bool=false) where {T<:Number} =
+#     integrate_centreline!(points, velocities, m, t; include_endpoints)
+
+
+# # PlanarFlagellum
+# # mutable struct PlanarFlagellum{T <: Number} <: FlagellumModel
+# #     L::T
+# #     C::T
+# #     R₀::T
+# #     R₁::T
+# #     k::T
+# #     ϕ::T
+# #     ω::T
+# #     δ::T
+# # end
+
+# @inline function unit_tangent(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+#     θ₁ = m.R₀ + m.R₁*sin(m.k*s)
+#     θ = m.C*s + θ₁*cos(m.ω*t - m.ϕ*s + m.δ)
+#     SVector(cos(θ), sin(θ), zero(T))
+# end
+
+# @inline function unit_tangent_and_dt(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
+#     θ₁ = m.R₀ + m.R₁*sin(m.k*s)
+#     φ  = m.ω*t - m.ϕ*s + m.δ
+#     θ =  m.C*s + θ₁*cos(φ)
+#     θdot = -m.ω*θ₁*sin(φ)
+#     (SVector(cos(θ), sin(θ), zero(T)), θdot * SVector(-sin(θ), cos(θ), zero(T)))
+# end
+
+# # ── QuasiPlanar ─────────────────────────────────────────────────────────
+
+# @inline function unit_tangent(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
+#     sL    = s*m.L
+#     θ     = m.A*(1 - exp(-sL/m.δ))*sin(m.ω*t - 2π*sL/m.λ) + m.C*sL
+#     scale = one(T)/sqrt(one(T) + (s*m.C_z)^2)
+#     scale * SVector(cos(θ), sin(θ), m.C_z*s)
+# end
+
+# @inline function unit_tangent_and_dt(s::T, t::T, m::QuasiPlanarFlagellum) where {T <: Number}
+#     sL    = s*m.L
+#     φ     = m.ω*t - 2π*sL/m.λ
+#     env   = m.A*(1 - exp(-sL/m.δ))
+#     θ     = env*sin(φ) + m.C*sL
+#     θ̇    = m.ω*env*cos(φ)                       # true ∂θ/∂t
+#     scale = one(T)/sqrt(one(T) + (s*m.C_z)^2)
+#     (scale * SVector(cos(θ), sin(θ), m.C_z*s),
+#      scale*θ̇ * SVector(-sin(θ), cos(θ), zero(T)))
 # end
 
 
-    
+# mutable struct ThreeDimensionalFlagellum{T <: Number} <: FlagellumModel
+#     L::T
+#     fᵩ::T;  Aᵩ::T;  δᵩ::T;  λᵩ::T;  Cᵩ::T      # azimuthal
+#     f_θ::T; A_θ::T; δ_θ::T; λ_θ::T; C_θ::T      # elevation
+#     γ::T                                         # overall phase
+#     Δγ::T                                        # relative phase (elevation − azimuth)
+# end
+
+# @inline function unit_tangent(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
+#     sL = s*m.L
+#     θ  = m.A_θ*(1 - exp(-sL/m.δ_θ))*sin(2π*m.f_θ*t - 2π*sL/m.λ_θ + m.γ + m.Δγ) + m.C_θ*sL
+#     ϕ  = m.Aᵩ *(1 - exp(-sL/m.δᵩ ))*sin(2π*m.fᵩ *t - 2π*sL/m.λᵩ + m.γ)        + m.Cᵩ*sL
+#     sθ, cθ = sincos(θ)
+#     sϕ, cϕ = sincos(ϕ)
+#     SVector(cθ*cϕ, cθ*sϕ, sθ)
+# end
+
+# @inline function unit_tangent_and_dt(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
+#     sL   = s*m.L
+#     envθ = m.A_θ*(1 - exp(-sL/m.δ_θ))
+#     envϕ = m.Aᵩ *(1 - exp(-sL/m.δᵩ ))
+#     φθ   = 2π*m.f_θ*t - 2π*sL/m.λ_θ + m.γ + m.Δγ
+#     φϕ   = 2π*m.fᵩ *t - 2π*sL/m.λᵩ + m.γ
+#     θ    = envθ*sin(φθ) + m.C_θ*sL
+#     ϕ    = envϕ*sin(φϕ) + m.Cᵩ*sL
+#     θ̇   = envθ * 2π*m.f_θ * cos(φθ)       # true ∂θ/∂t
+#     ϕ̇   = envϕ * 2π*m.fᵩ  * cos(φϕ)       # true ∂ϕ/∂t
+
+#     sθ, cθ = sincos(θ)
+#     sϕ, cϕ = sincos(ϕ)
+#     τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
+#     τ̇ = θ̇ * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +     # ∂t̂/∂θ
+#          ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))  # ∂t̂/∂ϕ
+#     (τ, τ̇)
+# end
+
+
+# mutable struct PlanarStandingWaveFlagellum{T <: Number} <: FlagellumModel
+#     # Arclength discretization
+#     L::T
+#     C::T
+#     A01::T
+#     ϕ01::T
+#     A11::T
+#     ϕ11::T
+#     A21::T
+#     ϕ21::T
+#     A31::T
+#     ϕ31::T
+#     ω::T
+# end
+
+# @inline function _standing_angle_and_rate(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T <: Number}
+#     ωt = m.ω*t
+#     s0, c0 = sincos(ωt + m.ϕ01)
+#     s1, c1 = sincos(ωt + m.ϕ11)
+#     s2, c2 = sincos(ωt + m.ϕ21)
+#     s3, c3 = sincos(ωt + m.ϕ31)
+#     b0 = sin(T(π)*s/2); b1 = sin(3*T(π)*s/2); b2 = sin(5*T(π)*s/2); b3 = sin(7*T(π)*s/2)
+#     # θ  =  C s + 2 Σ Aₙ cos(ωt+φₙ) bₙ(s)
+#     θ  = m.C*s + 2*(m.A01*c0*b0 + m.A11*c1*b1 + m.A21*c2*b2 + m.A31*c3*b3)
+#     # θ̇ = -2ω Σ Aₙ sin(ωt+φₙ) bₙ(s)
+#     θ̇ = -2*m.ω*(m.A01*s0*b0 + m.A11*s1*b1 + m.A21*s2*b2 + m.A31*s3*b3)
+#     (θ, θ̇)
+# end
+
+# @inline standing_angle(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number} =
+#     _standing_angle_and_rate(s, t, m)[1]
+
+# @inline function unit_tangent(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T <: Number}
+#     θ = standing_angle(s, t, m)
+#     SVector(cos(θ), sin(θ), zero(T))
+# end
+
+# @inline function unit_tangent_and_dt(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T <: Number}
+#     θ, θ̇ = _standing_angle_and_rate(s, t, m)
+#     (SVector(cos(θ), sin(θ), zero(T)),
+#      θ̇ * SVector(-sin(θ), cos(θ), zero(T)))
+# end
+
+# mutable struct ThreeDimensionalStandingWaveFlagellum{T <: Number} <: FlagellumModel
+#     L::T
+#     ω::T                       # single beat frequency
+#     C_θ::T                     # elevation static curvature
+#     A_θ::SVector{4,T}          # elevation mode amplitudes  (modes sin((2n-1)πs/2), n=1..4)
+#     ϕ_θ::SVector{4,T}          # elevation mode phases
+#     Cᵩ::T                      # azimuth static curvature
+#     Aᵩ::SVector{4,T}           # azimuth mode amplitudes
+#     ϕᵩ::SVector{4,T}           # azimuth mode phases
+# end
+
+# # spatial mode shapes sin((2n-1)πs/2), shared by both angles
+# @inline _modes(s::T) where {T<:Number} =
+#     SVector(sin(T(π)*s/2), sin(3*T(π)*s/2), sin(5*T(π)*s/2), sin(7*T(π)*s/2))
+
+# # one standing-wave bank: θ = C s + 2 Σ Aₙ cos(ωt+φₙ) bₙ(s),  θ̇ = -2ω Σ Aₙ sin(ωt+φₙ) bₙ(s)
+# @inline function _bank_angle(s::T, t::T, ω::T, C::T,
+#                              A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+#     b  = _modes(s)
+#     ωt = ω*t
+#     c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+#     C*s + 2*sum(A .* c .* b)
+# end
+
+# @inline function _bank_angle_and_rate(s::T, t::T, ω::T, C::T,
+#                                       A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+#     b  = _modes(s)
+#     ωt = ω*t
+#     c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+#     sn = SVector(sin(ωt+φ[1]), sin(ωt+φ[2]), sin(ωt+φ[3]), sin(ωt+φ[4]))
+#     ( C*s + 2*sum(A .* c .* b),  -2*ω*sum(A .* sn .* b) )
+# end
+
+# @inline function unit_tangent(s::T, t::T, m::ThreeDimensionalStandingWaveFlagellum) where {T<:Number}
+#     θ = _bank_angle(s, t, m.ω, m.C_θ, m.A_θ, m.ϕ_θ)
+#     ϕ = _bank_angle(s, t, m.ω, m.Cᵩ, m.Aᵩ, m.ϕᵩ)
+#     sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+#     SVector(cθ*cϕ, cθ*sϕ, sθ)
+# end
+
+# @inline function unit_tangent_and_dt(s::T, t::T, m::ThreeDimensionalStandingWaveFlagellum) where {T<:Number}
+#     θ, θ̇ = _bank_angle_and_rate(s, t, m.ω, m.C_θ, m.A_θ, m.ϕ_θ)
+#     ϕ, ϕ̇ = _bank_angle_and_rate(s, t, m.ω, m.Cᵩ, m.Aᵩ, m.ϕᵩ)
+#     sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
+#     τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
+#     τ̇ = θ̇ * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +     # ∂t̂/∂θ
+#          ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))  # ∂t̂/∂ϕ
+#     (τ, τ̇)
+# end

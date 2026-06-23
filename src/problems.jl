@@ -328,7 +328,9 @@ function gather!(prob::ResistanceProblem{<:Any, <:NystromDiscretisation})
     end
 end
 
-get_force_pts(prob::ResistanceProblem) = prob.disc.force_pts
+function add_rigid_body_motion!(prob::ResistanceProblem, U, Ω)
+    prob.disc.velocity .= U .+ cross.(Ref(Ω), prob.disc.force_pts)
+end
 
 function get_forces(prob::ResistanceProblem)
     check_solved!(prob)
@@ -397,6 +399,7 @@ function SwimmingTrajectoryProblem(
 )
     T = Float64
     sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu))
+    @info "" typeof(sprob)
 
     x0_0 = SVector{3,T}(x0)
     b1_0 = SVector{3,T}(B[:,1])
@@ -465,3 +468,60 @@ end
 # function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
 #     ...
 # end
+
+
+# only implemented for resistance problems currently
+mutable struct ParticleTrajectoryProblem{T<:Number} <: Problem
+    resistance_problem::ResistanceProblem{T}
+    ode_prob::ODEProblem
+    t::Union{Nothing,Vector{T}}
+    trajectories::Union{Nothing,Matrix{T}}
+end
+
+function ParticleTrajectoryProblem(
+    microswimmer::MicroSwimmer;
+    x=-5.0,
+    ys=range(-4.0, 4.0, 6),
+    zs=range(0.2, 3.2, 6),
+    t_final::T=20.0,
+    saveat::T=0.05,
+    eps=0.01,
+    mu=1.0
+) where {T<:Number}
+    num_particles = length(ys)*length(zs)
+    rprob = ResistanceProblem(microswimmer; eps=eps, mu=mu)
+    A = zeros(3 * num_particles, 3rprob.points.N)
+
+    function rhs!(dX, X, p, t)
+        update_boundary!(rprob, t)
+        solve_problem!(rprob)
+
+        resistance_matrix!(
+            A,
+            reshape(X, 3, num_particles),
+            rprob.points.quad_pts,
+            rprob.points.nearest,
+            eps;
+            μ=mu
+        )
+        dX .= A * rprob.force_vals
+    end
+
+    tspan = (0.0, t_final)
+
+    x0 = reduce(vcat, [[x, y, z] for y in ys, z in zs])
+
+    ParticleTrajectoryProblem(
+        rprob,
+        ODEProblem(rhs!, x0, tspan, saveat=saveat),
+        nothing,
+        nothing
+    )
+end
+
+function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
+    sol = solve(prob.ode_prob, method)
+    prob.t = sol.t
+    prob.trajectories = reduce(hcat, sol.u)
+end
+
