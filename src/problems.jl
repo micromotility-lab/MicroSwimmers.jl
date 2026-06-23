@@ -71,7 +71,7 @@ mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Num
     kernel::K
 end
 
-function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NewNearestDiscretisation}}; mu=1.0, eps=0.1)
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1)
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
@@ -79,7 +79,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NewNearestDiscretisa
     quad_pt_indices  = cumsum([1; nq_sizes[1:end-1]])
     prob = SwimmingProblem(
         ms,
-        NewNearestDiscretisation(N, Q),
+        NearestDiscretisation(N, Q),
         force_pt_indices,
         quad_pt_indices,
         Float64(mu),
@@ -110,7 +110,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisatio
     prob
 end
 
-function gather_nearest!(prob::SwimmingProblem{<:Any, <:NewNearestDiscretisation})
+function gather_nearest!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob
     for i in eachindex(microswimmer.parts)
         part   = microswimmer.parts[i]
@@ -121,7 +121,7 @@ function gather_nearest!(prob::SwimmingProblem{<:Any, <:NewNearestDiscretisation
     end
 end
 
-function gather!(prob::SwimmingProblem{<:Any, <:NewNearestDiscretisation})
+function gather!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob
     for i in eachindex(microswimmer.parts)
         part      = microswimmer.parts[i]
@@ -243,7 +243,7 @@ end
 ### ResistanceProblem #####################################################################
 ###########################################################################################
 
-mutable struct NewResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem
+mutable struct ResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem
     microswimmer::MS
     disc::D
     force_pt_indices::Vector{Int}
@@ -254,15 +254,15 @@ mutable struct NewResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisat
     kernel::K
 end
 
-function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NewNearestDiscretisation}}; mu=1.0, eps=0.1)
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1)
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
     force_pt_indices = cumsum([1; nf_sizes[1:end-1]])
     quad_pt_indices  = cumsum([1; nq_sizes[1:end-1]])
-    prob = NewResistanceProblem(
+    prob = ResistanceProblem(
         ms,
-        NewNearestDiscretisation(N, Q),
+        NearestDiscretisation(N, Q),
         force_pt_indices,
         quad_pt_indices,
         Float64(mu),
@@ -274,11 +274,11 @@ function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NewNearestDiscr
     prob
 end
 
-function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
     nf_sizes = [nf(p.disc) for p in ms.parts]
     N        = sum(nf_sizes)
     indices  = cumsum([1; nf_sizes[1:end-1]])
-    NewResistanceProblem(
+    ResistanceProblem(
         ms,
         NystromDiscretisation(N),
         indices,
@@ -290,7 +290,7 @@ function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscreti
     )
 end
 
-function gather_nearest!(prob::NewResistanceProblem{<:Any, <:NewNearestDiscretisation})
+function gather_nearest!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob
     for i in eachindex(microswimmer.parts)
         part   = microswimmer.parts[i]
@@ -301,7 +301,7 @@ function gather_nearest!(prob::NewResistanceProblem{<:Any, <:NewNearestDiscretis
     end
 end
 
-function gather!(prob::NewResistanceProblem{<:Any, <:NewNearestDiscretisation})
+function gather!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob
     for i in eachindex(microswimmer.parts)
         part      = microswimmer.parts[i]
@@ -316,7 +316,7 @@ function gather!(prob::NewResistanceProblem{<:Any, <:NewNearestDiscretisation})
     end
 end
 
-function gather!(prob::NewResistanceProblem{<:Any, <:NystromDiscretisation})
+function gather!(prob::ResistanceProblem{<:Any, <:NystromDiscretisation})
     @unpack microswimmer, disc, force_pt_indices = prob
     for i in eachindex(microswimmer.parts)
         part      = microswimmer.parts[i]
@@ -328,16 +328,16 @@ function gather!(prob::NewResistanceProblem{<:Any, <:NystromDiscretisation})
     end
 end
 
-get_force_pts(prob::NewResistanceProblem) = prob.disc.force_pts
+get_force_pts(prob::ResistanceProblem) = prob.disc.force_pts
 
-function get_forces(prob::NewResistanceProblem)
+function get_forces(prob::ResistanceProblem)
     check_solved!(prob)
     fv = prob.force_vals
     N  = nf(prob.disc)
     [SVector{3}(fv[3i-2], fv[3i-1], fv[3i]) for i in 1:N]
 end
 
-function solve_problem!(prob::NewResistanceProblem)
+function solve_problem!(prob::ResistanceProblem)
     @unpack lin_prob, disc, kernel, mu = prob
     gather!(prob)
     assemble!(lin_prob.A, disc, kernel; μ=mu)
