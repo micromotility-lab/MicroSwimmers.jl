@@ -122,22 +122,24 @@ nq(disc::NearestDiscretisation) = length(disc.quad_pts)
 
 # spacing between force points
 function hf(disc::NearestDiscretisation)
-    @unpack force_pts, N, = disc
-    dnn = [minimum(norm.(eachcol(force_pts .- force_pts[:, i]))[setdiff(1:N, i)]) for i in 1:N]
+    fps = disc.force_pts
+    N   = nf(disc)
+    dnn = [minimum(norm(fps[i] - fps[j]) for j in 1:N if j != i) for i in 1:N]
     @info "N=$N" findmin(dnn) median(dnn) maximum(dnn)
     (minimum(dnn), median(dnn), maximum(dnn))
 end
 
 # spacing between quadrature points
 function hq(disc::NearestDiscretisation)
-    @unpack force_pts, quad_pts, N, Q, nearest = disc
+    @unpack quad_pts, nearest = disc
+    N   = nf(disc)
     dnn = Float64[]
     for i in 1:N
-        patch_quad_pts = quad_pts[:, nearest .== i]
-        Qp = size(patch_quad_pts, 2)
-        append!(dnn, [minimum(norm.(eachcol(patch_quad_pts .- patch_quad_pts[:, j]))[setdiff(1:Qp, j)]) for j in 1:Qp])
+        patch = [quad_pts[j] for j in eachindex(quad_pts) if nearest[j] == i]
+        Qp = length(patch)
+        Qp > 1 && append!(dnn, [minimum(norm(patch[j] - patch[k]) for k in 1:Qp if k != j) for j in 1:Qp])
     end
-    @info "Q=$Q" minimum(dnn) median(dnn) findmax(dnn)
+    @info "Q=$(nq(disc))" minimum(dnn) median(dnn) findmax(dnn)
     (minimum(dnn), median(dnn), maximum(dnn))
 end
 

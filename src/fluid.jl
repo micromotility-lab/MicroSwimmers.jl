@@ -1,33 +1,37 @@
 # Calculate the velocity at an arbitrary point in the fluid
 
-struct FluidVelocity{T <: Number}
+struct FluidVelocity{T <: Number, K <: Kernel}
     quad_pts::Vector{SVector{3,T}}
-    nearest::Vector{Int}          
-    eps::T
+    nearest::Vector{Int}
+    kernel::K
     mu::T
-    force_vals::Vector{T}   # change this to AbstractVector to accept a view      
-    A::Matrix{T}                  # 3×N
-    wall::Bool
+    force_vals::Vector{T}   # 3N force components (excluding U/Ω for SwimmingProblem)
+    A::Matrix{T}            # 3 × 3N scratch buffer
 end
+
+_fluid_quad_pts(disc::NearestDiscretisation) = disc.quad_pts
+_fluid_quad_pts(disc::NystromDiscretisation) = disc.force_pts
+
+_fluid_nearest(disc::NearestDiscretisation) = disc.nearest
+_fluid_nearest(disc::NystromDiscretisation) = collect(1:nf(disc))
 
 function FluidVelocity(prob::InstantaneousProblem)
     check_solved!(prob)
-    N = length(prob.disc.force_pts)
-    A = zeros(3, N)
+    N  = nf(prob.disc)
+    fv = prob.force_vals[1:3N]  # leave out U and Ω for SwimmingProblem
     FluidVelocity(
-        prob.disc.quad_pts,
-        prob.disc.nearest,
-        prob.eps,
+        _fluid_quad_pts(prob.disc),
+        _fluid_nearest(prob.disc),
+        prob.kernel,
         prob.mu,
-        prob.force_vals[1:N], # leave out U and Ω for SwimmingProblem
-        A,
-        prob.wall
+        fv,
+        zeros(eltype(fv), 3, 3N)
     )
 end
 
 function (fv::FluidVelocity)(x)
-    resistance_matrix!(fv.A, x, fv.quad_pts, fv.nearest, fv.eps; μ=fv.mu, wall=fv.wall)
-    SVector{3}(fv.A * fv.force_vals)     
+    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.kernel; μ=fv.mu)
+    SVector{3}(fv.A * fv.force_vals)
 end
 
 struct PlanarVelocityField{T <: Number}
@@ -77,11 +81,6 @@ function TimeAveragedPlanarVelocityField(prob::InstantaneousProblem,
     PlanarVelocityField(plane, a_range, b_range, c, vfs[1].points, mean(vf.velocities for vf in vfs))
 end
 
-function TimeAveragedVelocityField(prob::InstantaneousProblem, pts::Matrix{T}, pre_transform::Function=update_boundary!; period=1.0, num_t=30) where {T <: Number}
-    new_vf = prob -> VelocityField(prob, pts)
-    vfs = time_collect!(prob, pre_transform, new_vf, period, num_t; endpoint=false)
-    VelocityField(vfs[1].points, mean(vf.velocities for vf in vfs))
-end
 
 function velocity_flux(u, z_bot, z_top, y_min, y_max; x=0., N=20)
     # Gauss–Legendre nodes and weights on [-1, 1]

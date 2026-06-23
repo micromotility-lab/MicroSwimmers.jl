@@ -490,20 +490,17 @@ function ParticleTrajectoryProblem(
 ) where {T<:Number}
     num_particles = length(ys)*length(zs)
     rprob = ResistanceProblem(microswimmer; eps=eps, mu=mu)
-    A = zeros(3 * num_particles, 3rprob.points.N)
+    N = nf(rprob.disc)
+    A = zeros(3 * num_particles, 3N)
 
     function rhs!(dX, X, p, t)
         update_boundary!(rprob, t)
         solve_problem!(rprob)
-
-        resistance_matrix!(
-            A,
-            reshape(X, 3, num_particles),
-            rprob.points.quad_pts,
-            rprob.points.nearest,
-            eps;
-            μ=mu
-        )
+        for i in 1:num_particles
+            x_sv = SVector{3}(X[3i-2], X[3i-1], X[3i])
+            Ai   = @view A[3i-2:3i, :]
+            assemble!(Ai, [x_sv], rprob.disc.quad_pts, rprob.disc.nearest, rprob.kernel; μ=rprob.mu)
+        end
         dX .= A * rprob.force_vals
     end
 

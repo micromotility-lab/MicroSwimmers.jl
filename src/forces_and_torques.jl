@@ -1,23 +1,39 @@
-total_force(forces, points::Discretisation) = sum(forces[:,n] for n in points.nearest)
+total_force(forces::AbstractVector{<:SVector}) = sum(forces)
 
-function total_torque(forces, points::Discretisation)
-    @unpack quad_pts, nearest = points
-    sum(cross(quad_pts[:,i], forces[:, nearest[i]]) for i in axes(quad_pts,2))
+function total_torque(forces::AbstractVector{<:SVector}, disc::NearestDiscretisation)
+    sum(cross(disc.quad_pts[i], forces[disc.nearest[i]]) for i in eachindex(disc.quad_pts))
+end
+
+function total_torque(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
+    sum(cross(disc.force_pts[i], forces[i]) for i in eachindex(disc.force_pts))
 end
 
 function total_force_and_torque(prob::InstantaneousProblem)
     check_solved!(prob)
-    forces = reshape(prob.force_vals, 3, :)
-    points =  prob.points
-    total_force(forces, points), total_torque(forces, points)
+    forces = get_forces(prob)
+    total_force(forces), total_torque(forces, prob.disc)
 end
 
 
 function stresslet_tensor(prob::InstantaneousProblem)
     check_solved!(prob)
-    @unpack quad_pts, nearest = prob.points
     forces = get_forces(prob)
-    S_raw = 0.5*sum(forces[nearest[i]] * quad_pts[:,i]' + quad_pts[:,i] * forces[nearest[i]]' for i in axes(quad_pts, 2))
+    _stresslet_tensor(forces, prob.disc)
+end
+
+function _stresslet_tensor(forces, disc::NearestDiscretisation)
+    S_raw = 0.5 * sum(
+        forces[disc.nearest[i]] * disc.quad_pts[i]' + disc.quad_pts[i] * forces[disc.nearest[i]]'
+        for i in eachindex(disc.quad_pts)
+    )
+    S_raw - (1/3)*tr(S_raw)*I
+end
+
+function _stresslet_tensor(forces, disc::NystromDiscretisation)
+    S_raw = 0.5 * sum(
+        forces[i] * disc.force_pts[i]' + disc.force_pts[i] * forces[i]'
+        for i in eachindex(disc.force_pts)
+    )
     S_raw - (1/3)*tr(S_raw)*I
 end
 
@@ -33,10 +49,10 @@ function average_stresslet_tensor(prob::InstantaneousProblem; period=1.0, num_ts
 end
 
 function total_power(prob::InstantaneousProblem)
-    check_solved!(prob) 
+    check_solved!(prob)
     forces = get_forces(prob)
-    vels = get_velocities(prob)
-    sum(dot(forces[n], vels[n]) for n in prob.points.nearest)
+    vels   = prob.disc.velocity
+    sum(dot(forces[n], vels[n]) for n in eachindex(forces))
 end
 
 function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
@@ -47,11 +63,10 @@ function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
     Es = Float64[]
 
     for (i, t) in enumerate(traj.t)
-        move_boundary!(sprob, traj.x[i], traj.b1[i], traj.b2[i], t) 
+        move_boundary!(sprob, traj.x[i], traj.b1[i], traj.b2[i], t)
         solve_problem!(sprob)
         push!(Es, total_power(sprob))
     end
     # Trapezoidal integration
     sum(0.5 * (Es[i] + Es[i+1]) * (traj.t[i+1] - traj.t[i]) for i in 1:length(traj.t)-1)
 end
-

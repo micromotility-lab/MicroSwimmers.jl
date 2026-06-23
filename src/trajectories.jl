@@ -31,9 +31,19 @@ centred_trajectory(traj::Trajectory) = translate_trajectory(traj, mean(traj.x))
 
 
 function move_boundary!(S::AbstractMicroSwimmer, traj::Trajectory, t_ind::Int=1)
+    b1, b2 = traj.b1[t_ind], traj.b2[t_ind]
+    S.frame = Frame(traj.x[t_ind], SMatrix{3,3}(hcat(b1, b2, cross(b1, b2))))
     update_boundary!(S, traj.t[t_ind])
-    S.points.location = traj.x[t_ind]
-    S.points.orientation = [traj.b1[t_ind] traj.b2[t_ind] cross(traj.b1[t_ind], traj.b2[t_ind])]
+end
+
+function continue_periodic_trajectory!(traj::Trajectory, N_periods=10)
+    extended = continue_periodic_trajectory(traj, N_periods)
+    n0 = length(traj.t)
+    append!(traj.t,  @view extended.t[n0+1:end])
+    append!(traj.x,  @view extended.x[n0+1:end])
+    append!(traj.b1, @view extended.b1[n0+1:end])
+    append!(traj.b2, @view extended.b2[n0+1:end])
+    traj
 end
 
 function average_swimming_velocity(traj::Trajectory)
