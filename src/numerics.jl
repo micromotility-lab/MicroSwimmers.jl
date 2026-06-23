@@ -261,12 +261,65 @@ function assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
     for (q, yq) in enumerate(quad_pts)
         col = 3*nearest[q] - 2
         for (m, xm) in enumerate(force_pts)
-            S   = kernel(xm, yq)     
+            S   = kernel(xm, yq)
             row = 3m - 2
             @inbounds for b in 1:3, a in 1:3
                 A[row+a-1, col+b-1] += S[a,b]
             end
         end
     end
-    A .*= inv(8π*μ)                         
+    A .*= inv(8π*μ)
+end
+
+# Dispatch wrappers for assemble_swimming! — same pattern as assemble!
+assemble_swimming!(A, x0, disc::NewNearestDiscretisation, kernel; μ=one(eltype(A))) =
+    assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
+
+assemble_swimming!(A, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
+    assemble_swimming!(A, x0, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
+
+function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
+                             force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
+    T  = eltype(A)
+    N  = length(force_pts)
+    N3 = 3N
+    fill!(A, zero(T))
+
+    # BEM block: A[3m-2:3m, 3nearest[q]-2:3nearest[q]] += kernel(xm, yq)
+    for (q, yq) in enumerate(quad_pts)
+        col = 3*nearest[q] - 2
+        for (m, xm) in enumerate(force_pts)
+            S   = kernel(xm, yq)
+            row = 3m - 2
+            @inbounds for b in 1:3, a in 1:3
+                A[row+a-1, col+b-1] += S[a,b]
+            end
+        end
+    end
+    A[1:N3, 1:N3] .*= inv(8π * T(μ))
+
+    # Rigid body columns: U (cols N3+1:N3+3) and Ω (cols N3+4:N3+6)
+    @inbounds for (m, xm) in enumerate(force_pts)
+        row = 3m - 2
+        for p in 1:3
+            A[row+p-1, N3+p] = -one(T)
+        end
+        K = skew_symmetric_static(xm - x0)
+        for p in 1:3, q in 1:3
+            A[row+p-1, N3+3+q] = K[p,q]
+        end
+    end
+
+    # Force-free / torque-free rows (rows N3+1:N3+6)
+    @inbounds for (q, yq) in enumerate(quad_pts)
+        n = nearest[q]
+        for d in 1:3
+            A[N3+d, 3n-3+d] += one(T)
+        end
+        rq = yq - x0
+        Kq = skew_symmetric_static(rq)
+        for p in 1:3, r in 1:3
+            A[N3+3+p, 3*(n-1)+r] += Kq[p,r]
+        end
+    end
 end

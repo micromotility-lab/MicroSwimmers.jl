@@ -109,7 +109,7 @@ mutable struct NearestDiscretisation{T <: Number} <: Discretisation
 end
 
 
-NearestDiscretisation(N::Int, Q::Int) = NewNearestDiscretisation(
+NearestDiscretisation(N::Int, Q::Int) = NearestDiscretisation(
     Vector{SVector{3,Float64}}(undef, N),
     Vector{SVector{3,Float64}}(undef, N),
     Vector{SVector{3,Float64}}(undef, Q),
