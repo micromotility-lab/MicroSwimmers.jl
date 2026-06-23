@@ -1,7 +1,26 @@
 ### Ellipsoids
 
+# function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Number}
+#     points = Array{T}(undef, 3, num_points)
+#     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1
+#     ga = 2π * phi  
+
+#     for i in 0:num_points-1
+#         theta = ga * i  
+#         z = 1 - (2i + 1) / num_points  # height
+#         r = sqrt(1 - z^2)  # radius of the circle at height z
+
+#         x = a * cos(theta) * r
+#         y = b * sin(theta) * r
+#         z = c * z
+
+#         points[:, i+1] .= [x, y, z]  
+#     end
+#     points
+# end
+
 function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Number}
-    points = Array{T}(undef, 3, num_points)
+    points = Vector{SVector{3,T}}(undef, num_points)
     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1
     ga = 2π * phi  
 
@@ -14,7 +33,7 @@ function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Numb
         y = b * sin(theta) * r
         z = c * z
 
-        points[:, i+1] .= [x, y, z]  
+        points[i+1] = SVector(x, y, z)  
     end
     points
 end

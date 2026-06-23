@@ -1,4 +1,4 @@
-abstract type Flagellum <: MicroSwimmer end
+abstract type Flagellum <: AbstractMicroSwimmer end
 
 struct BareFlagellum{M <: FlagellumModel, D <: Discretisation} <: Flagellum
     model::M

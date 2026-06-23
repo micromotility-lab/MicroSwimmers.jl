@@ -30,7 +30,7 @@ end
 centred_trajectory(traj::Trajectory) = translate_trajectory(traj, mean(traj.x))
 
 
-function move_boundary!(S::MicroSwimmer, traj::Trajectory, t_ind::Int=1)
+function move_boundary!(S::AbstractMicroSwimmer, traj::Trajectory, t_ind::Int=1)
     update_boundary!(S, traj.t[t_ind])
     S.points.location = traj.x[t_ind]
     S.points.orientation = [traj.b1[t_ind] traj.b2[t_ind] cross(traj.b1[t_ind], traj.b2[t_ind])]

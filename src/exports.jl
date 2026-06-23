@@ -6,7 +6,7 @@ export FluidBoundary, update_boundary!, move_boundary!
 export CellBody, grand_resistance_matrix
 export Configuration
 
-export fibonacci_cylinder
+export fibonacci_cylinder, fibonacci_ellipsoid
 # Bodies
 export RigidMotionBody, add_rigid_body_motion!, add_velocity!, add_angular_velocity!, reset_velocity!
 export SphericalBody, EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody #, PNASExcavateBody
@@ -49,3 +49,8 @@ export spacing
 export get_sol!
 
 export check_boundary_conditions, check_body_boundary_conditions
+
+
+# redesign
+export Part, MicroSwimmer, NewResistanceProblem, NewNearestDiscretisation, nf, nq, gather!, RegStokeslet, regularised_stokeslet!
+export PlanarStandingWaveFlagellum, ThreeDimensionalStandingWaveFlagellum

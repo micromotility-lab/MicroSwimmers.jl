@@ -1,7 +1,5 @@
-abstract type CellBodyModel end
-
-# calculate the rigid body velocity at pts due to translation U and rotation Ω
-(m::CellBodyModel)(pts::AbstractMatrix, U::AbstractVector, Ω::AbstractVector)= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(pts)))
+abstract type Model end
+abstract type CellBodyModel <: Model end
 
 # Nearest spacing helper functions for cell bodies
 
@@ -31,7 +29,16 @@ mutable struct EllipsoidBody{T <: Number} <: CellBodyModel
     c::T 
 end
 
-(m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = [pts_fn(m.a, m.b, m.c, N)]
+(m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = pts_fn(m.a, m.b, m.c, N)
+function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, t::T) where {T <: Number}
+    points .= m(length(points))
+end
+
+function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}, t::T) where {T <: Number}
+    points .= m(length(points))
+    velocities .= Ref(zero(SVector{3,T}))
+end
+
 
 mutable struct EllipsoidalGroovedBody{T <: Number} <: CellBodyModel
     a::T

@@ -59,7 +59,7 @@ function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix)
 end
 
 mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
-    microswimmer::MicroSwimmer
+    microswimmer::AbstractMicroSwimmer
     points::Discretisation  # IS THIS NECESSARY?
     eps::T   # regularisation parameter
     mu::T    # viscosity
@@ -70,7 +70,7 @@ mutable struct SwimmingProblem{T<:Number} <: InstantaneousProblem
 end
 
 # function SwimmingProblem(
-#     S::MicroSwimmer;
+#     S::AbstractMicroSwimmer;
 #     eps=0.01,
 #     mu=1.0,
 #     wall=false
@@ -105,7 +105,7 @@ _make_points(::Type{NystromDiscretisation}, S) = NystromDiscretisation(
 )
 
 function SwimmingProblem(
-    S::MicroSwimmer;
+    S::AbstractMicroSwimmer;
     discretisation::Type{D}=NearestDiscretisation,
     eps=0.01, mu=1.0, wall=false
 ) where {D}
@@ -354,6 +354,106 @@ function check_boundary_conditions(prob::ResistanceProblem; t=0.0)
     # median(resid), maximum(resid)
 end
 
+struct NewResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem
+    microswimmer::MS
+    disc::D  # lab-frame points
+    force_pt_indices::Vector{Int}  # indices into parts in the disc
+    quad_pt_indices::Vector{Int}
+
+    mu::T    # viscosity
+    lin_prob::L
+    force_vals::Union{Nothing,Vector{T}}
+    kernel::K
+end
+
+function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NewNearestDiscretisation}}; mu=1.0, eps=0.1)
+    N = sum(nf(p.disc) for p in ms.parts)
+    Q = sum(nq(p.disc) for p in ms.parts)
+
+    nf_sizes = [nf(p.disc) for p in ms.parts]
+    nq_sizes = [nq(p.disc) for p in ms.parts]
+    force_pt_indices = cumsum([1; nf_sizes[1:end-1]])
+    quad_pt_indices  = cumsum([1; nq_sizes[1:end-1]])
+
+    prob = NewResistanceProblem(
+        ms,
+        NewNearestDiscretisation(N, Q),
+        force_pt_indices,
+        quad_pt_indices,
+        mu,
+        LinearProblem(zeros(3N, 3N), zeros(3N)),
+        nothing,
+        RegStokeslet(eps)
+    )
+    gather_nearest!(prob)
+    prob
+end
+
+function NewResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
+    nf_sizes = [nf(p.disc) for p in ms.parts]
+    N        = sum(nf_sizes)
+    indices  = cumsum([1; nf_sizes[1:end-1]])
+
+    NewResistanceProblem(
+        ms,
+        NystromDiscretisation(N),
+        indices,
+        indices,   # quad_pt_indices == force_pt_indices for Nyström
+        mu,
+        LinearProblem(zeros(3N, 3N), zeros(3N)),
+        nothing,
+        RegStokeslet(eps)
+    )
+end
+
+function gather_nearest!(prob::NewResistanceProblem)
+     @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob 
+     for i in eachindex(microswimmer.parts)
+        part = microswimmer.parts[i]
+        foff   = force_pt_indices[i] - 1  
+        qstart = quad_pt_indices[i]
+        nq_i = length(part.disc.nearest)
+        @views disc.nearest[qstart:qstart+nq_i-1] .= part.disc.nearest .+ foff
+     end
+end
+
+function gather!(prob::NewResistanceProblem{<:Any, <:NewNearestDiscretisation})
+    @unpack microswimmer, disc, force_pt_indices, quad_pt_indices = prob
+    for i in eachindex(microswimmer.parts)
+        part      = microswimmer.parts[i]
+        lab_frame = microswimmer.frame * part.frame
+        fstart    = force_pt_indices[i]
+        qstart    = quad_pt_indices[i]
+
+        nf_i = length(part.disc.force_pts)
+        @views disc.force_pts[fstart:fstart+nf_i-1] .= lab_frame.(part.disc.force_pts)
+        @views disc.velocity[fstart:fstart+nf_i-1]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+
+        nq_i = length(part.disc.quad_pts)
+        @views disc.quad_pts[qstart:qstart+nq_i-1] .= lab_frame.(part.disc.quad_pts)
+    end
+end
+
+function gather!(prob::NewResistanceProblem{<:Any, <:NystromDiscretisation})
+    @unpack microswimmer, disc, force_pt_indices = prob
+    for i in eachindex(microswimmer.parts)
+        part      = microswimmer.parts[i]
+        lab_frame = microswimmer.frame * part.frame
+        fstart    = force_pt_indices[i]
+        nf_i      = nf(part.disc)
+        @views disc.force_pts[fstart:fstart+nf_i-1] .= lab_frame.(part.disc.force_pts)
+        @views disc.velocity[fstart:fstart+nf_i-1]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+    end
+end
+
+function solve_problem!(prob::NewResistanceProblem)
+    @unpack lin_prob, disc, kernel, mu = prob
+    gather!(prob)
+    assemble!(lin_prob.A, disc, kernel; μ=mu)
+    lin_prob.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
+    solve(lin_prob, MKLLUFactorization())
+end
+
 
 ###########################################################################################
 ### Dynamic Problems ######################################################################
@@ -367,7 +467,7 @@ mutable struct SwimmingTrajectoryProblem <: DynamicProblem
 end
 
 function SwimmingTrajectoryProblem(
-    S::MicroSwimmer;
+    S::AbstractMicroSwimmer;
     x0=SVector(0.0, 0.0, 0.0),
     B=I3,
     t_final=20.0,
@@ -440,7 +540,7 @@ mutable struct ParticleTrajectoryProblem{T<:Number} <: Problem
 end
 
 function ParticleTrajectoryProblem(
-    microswimmer::MicroSwimmer;
+    microswimmer::AbstractMicroSwimmer;
     x=-5.0,
     ys=range(-4.0, 4.0, 6),
     zs=range(0.2, 3.2, 6),
@@ -485,4 +585,3 @@ function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
     prob.t = sol.t
     prob.trajectories = reduce(hcat, sol.u)
 end
-

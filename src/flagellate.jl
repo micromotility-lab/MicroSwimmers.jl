@@ -1,4 +1,4 @@
-struct Flagellate{F <: Flagellum} <: MicroSwimmer
+struct Flagellate{F <: Flagellum} <: AbstractMicroSwimmer
     body::CellBody
     flagella::Vector{F}
     points::Discretisation
@@ -81,7 +81,7 @@ function discretisation(flgt::Flagellate)
     @info "Discretisation" flgt.body.points.N flgt.body.points.Q flgt.flagella[1].points.N flgt.flagella[1].points.Q
 end
 
-struct Colony{F <: Flagellate} <: MicroSwimmer
+struct Colony{F <: Flagellate} <: AbstractMicroSwimmer
     members::Vector{F}
     points::Discretisation
     member_force_indices::Vector{Int}  # start index of each member's force pts
@@ -142,3 +142,4 @@ function update_boundary!(colony::Colony, t::T) where {T <: Number}
         end
     end
 end
+

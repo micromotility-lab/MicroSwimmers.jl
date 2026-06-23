@@ -1,4 +1,4 @@
-abstract type FlagellumModel end
+abstract type FlagellumModel <: Model end
 
 function (m::FlagellumModel)(points::NystromDiscretisation, t::T) where {T <: Number}
     m(points.force_pts, points.velocities, t; include_endpoints=true)
@@ -193,8 +193,9 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMat
         points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
         points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
         velocities[1,1] = (ωθ₁sin_prev*sinθ_prev + ωθ₁sin0*sinθ0) * half_L_ds
-        velocities[1,2] =  - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin0*cosθ0) * half_L_ds
+        velocities[2,1] =  - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin0*cosθ0) * half_L_ds
     end
+    
     
     
     @inbounds for i in 2:N
@@ -212,7 +213,6 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMat
         ωθ₁sin_prev = ωθ₁sin
     end
 end
-
 
 function (m::PlanarFlagellum)(tube_points::AbstractMatrix{T}, M::Int, t::T; radius::T=0.01) where {T <: Number}
     N = size(tube_points, 2) ÷ M
@@ -508,53 +508,53 @@ end
 
 # Three dimensional flagellum based on the model used in Suzuki-Tellier et. al 2024
 
-mutable struct ThreeDimensionalFlagellum{T <: Number}
-    ## Waveform parameters
-    L::Float64      # Flagellum length
-    fᵩ::Float64      # Azimuthal beat frequency
-    Aᵩ::Float64     # Azimuthal amplitude
-    δᵩ::Float64     # Azimuthal amplitude modulation
-    λᵩ::Float64     # Azimuthal Wavelength
-    Cᵩ::Float64     # Azimuthal static curvature
+# mutable struct ThreeDimensionalFlagellum{T <: Number}
+#     ## Waveform parameters
+#     L::Float64      # Flagellum length
+#     fᵩ::Float64      # Azimuthal beat frequency
+#     Aᵩ::Float64     # Azimuthal amplitude
+#     δᵩ::Float64     # Azimuthal amplitude modulation
+#     λᵩ::Float64     # Azimuthal Wavelength
+#     Cᵩ::Float64     # Azimuthal static curvature
 
-    f_θ::Float64    # Polar beat frequency
-    A_θ::Float64    # Polar amplitude
-    δ_θ::Float64    # Polar amplitude modulation
-    λ_θ::Float64    # Polar wavelength
-    C_θ::Float64    # Polar static curvature
+#     f_θ::Float64    # Polar beat frequency
+#     A_θ::Float64    # Polar amplitude
+#     δ_θ::Float64    # Polar amplitude modulation
+#     λ_θ::Float64    # Polar wavelength
+#     C_θ::Float64    # Polar static curvature
 
-    γ::Float64      # overall phase 
-    Δγ::Float64     # relative phase   
-end
+#     γ::Float64      # overall phase 
+#     Δγ::Float64     # relative phase   
+# end
 
-@inline function get_integrands(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
-    θ = m.A_θ * (1 - exp(-s*L/m.δ_θ))*sin(2π*m.f_θ*t - 2π*s*L/m.λ_θ + m.γ + m.Δγ) + m.C_θ*s
-    ϕ = m.Aᵩ  * (1 - exp(-s*L/m.δᵩ))*sin(2π*m.fᵩ*t - 2π*s*L/m.λᵩ + m.γ) + m.C_θ*s
-    (sin(θ), cos(θ), sin(ϕ), cos(ϕ))
-end
+# @inline function get_integrands(s::T, t::T, m::ThreeDimensionalFlagellum) where {T <: Number}
+#     θ = m.A_θ * (1 - exp(-s*L/m.δ_θ))*sin(2π*m.f_θ*t - 2π*s*L/m.λ_θ + m.γ + m.Δγ) + m.C_θ*s
+#     ϕ = m.Aᵩ  * (1 - exp(-s*L/m.δᵩ))*sin(2π*m.fᵩ*t - 2π*s*L/m.λᵩ + m.γ) + m.C_θ*s
+#     (sin(θ), cos(θ), sin(ϕ), cos(ϕ))
+# end
 
 
-function (m::ThreeDimensionalFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
-    N = size(points,2)
-    ds = 1/(N-1)
-    half_L_ds = 0.5*m.L*ds
+# function (m::ThreeDimensionalFlagellum)(points::AbstractMatrix{T}, t::T) where {T <: Number}
+#     N = size(points,2)
+#     ds = 1/(N-1)
+#     half_L_ds = 0.5*m.L*ds
 
-    s_prev = 0.0
-    sinθ_prev, cosθ_prev, sinϕ_prev, cosϕ_prev  = get_integrands(s_prev, t, m)
+#     s_prev = 0.0
+#     sinθ_prev, cosθ_prev, sinϕ_prev, cosϕ_prev  = get_integrands(s_prev, t, m)
     
-    @inbounds for i in 2:N
-        s = s_prev + ds
-        sinθ, cosθ, sinϕ_prev, cosϕ_prev = get_integrands(s, t, m)
+#     @inbounds for i in 2:N
+#         s = s_prev + ds
+#         sinθ, cosθ, sinϕ_prev, cosϕ_prev = get_integrands(s, t, m)
 
-        points[1,i] = points[1,i-1] + (cosθ_prev*cosϕ_prev + cosθ*cosϕ) * half_L_ds
-        points[2,i] = points[2,i-1] + (cosθ_prev*sinϕ_prev + cosθ*sinϕ) * half_L_ds
-        points[3,i] = points[3,i-1] + (sinθ_prev + sinθ) * half_L_ds
+#         points[1,i] = points[1,i-1] + (cosθ_prev*cosϕ_prev + cosθ*cosϕ) * half_L_ds
+#         points[2,i] = points[2,i-1] + (cosθ_prev*sinϕ_prev + cosθ*sinϕ) * half_L_ds
+#         points[3,i] = points[3,i-1] + (sinθ_prev + sinθ) * half_L_ds
 
-        s_prev      = s
-        sinθ_prev   = sinθ
-        cosθ_prev   = cosθ
-    end
-end
+#         s_prev      = s
+#         sinθ_prev   = sinθ
+#         cosθ_prev   = cosθ
+#     end
+# end
 
 # function (m::ThreeDimensionalFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMatrix{T}, t::T)
 # end
