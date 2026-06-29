@@ -399,7 +399,6 @@ function SwimmingTrajectoryProblem(
 )
     T = Float64
     sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu))
-    @info "" typeof(sprob)
 
     x0_0 = SVector{3,T}(x0)
     b1_0 = SVector{3,T}(B[:,1])
