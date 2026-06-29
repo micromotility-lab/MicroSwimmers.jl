@@ -28,7 +28,7 @@ function get_s0_and_ds(T::Type, N::Int, include_endpoints::Bool)
 end
 
 # position only
-@inline function integrate_centreline!(points::Vector{SVector{3,T}},
+@inline function integrate_centreline!(points::AbstractVector{SVector{3,T}},
                                        m::FlagellumModel, t::T;
                                        include_endpoints::Bool) where {T <: Number}
     N = length(points)
@@ -54,7 +54,7 @@ end
 end
 
 # position + velocity
-@inline function integrate_centreline!(points::Vector{SVector{3,T}},
+@inline function integrate_centreline!(points::AbstractVector{SVector{3,T}},
                                        velocities::Vector{SVector{3,T}},
                                        m::FlagellumModel, t::T;
                                        include_endpoints::Bool) where {T <: Number}
@@ -83,14 +83,24 @@ end
     return points, velocities
 end
 
-# Generic call surface — no model writes loop code.
 @inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, t::T;
                             include_endpoints::Bool=false) where {T<:Number} =
     integrate_centreline!(points, m, t; include_endpoints)
 
+
 @inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}},
                             t::T; include_endpoints::Bool=false) where {T<:Number} =
     integrate_centreline!(points, velocities, m, t; include_endpoints)
+
+# return a matrix of points on an (s,t) grid
+function (m::FlagellumModel)(s_vals::AbstractVector{T}, t_vals::AbstractVector{T}) where {T <: Number}
+    pts = Matrix{SVector{3,T}}(undef, length(s_vals), length(t_vals))
+    for (n,t) in enumerate(t_vals)
+        integrate_centreline!(view(pts, :, n), m, t; include_endpoints=true)
+    end
+    pts
+end
+
 
 # Discretisation glue (force pts → open rule, quad pts → closed rule).
 function (m::FlagellumModel)(disc::NearestDiscretisation, t::T) where {T <: Number}
@@ -221,23 +231,37 @@ end
 @inline _modes(s::T) where {T<:Number} =
     SVector(sin(T(π)*s/2), sin(3*T(π)*s/2), sin(5*T(π)*s/2), sin(7*T(π)*s/2))
 
-@inline function _bank_angle(s::T, t::T, ω::T, C::T,
-                             A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+# @inline function _bank_angle(s::T, t::T, ω::T, C::T,
+#                              A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+#     b  = _modes(s)
+#     ωt = ω*t
+#     c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+#     C*s + 2*sum(A .* c .* b)
+# end
+
+
+@inline function get_angle(s::T, t::T, ω::T, C::T,
+                                R::SVector{4,T}, I::SVector{4,T}) where {T<:Number}
     b  = _modes(s)
     ωt = ω*t
-    c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
-    C*s + 2*sum(A .* c .* b)
+    C*s + 2*(cos(ωt)*dot(R, b) - sin(ωt)*dot(I, b))
 end
 
-@inline function _bank_angle_and_rate(s::T, t::T, ω::T, C::T,
-                                      A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+# @inline function get_angle_and_rate(s::T, t::T, ω::T, C::T,
+#                                       A::SVector{4,T}, φ::SVector{4,T}) where {T<:Number}
+#     b  = _modes(s)
+#     ωt = ω*t
+#     c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
+#     sn = SVector(sin(ωt+φ[1]), sin(ωt+φ[2]), sin(ωt+φ[3]), sin(ωt+φ[4]))
+#     ( C*s + 2*sum(A .* c .* b),  -2*ω*sum(A .* sn .* b) )
+# end
+
+@inline function get_angle_and_rate(s::T, t::T, ω::T, C::T,
+                                      R::SVector{4,T}, I::SVector{4,T}) where {T<:Number}
     b  = _modes(s)
     ωt = ω*t
-    c  = SVector(cos(ωt+φ[1]), cos(ωt+φ[2]), cos(ωt+φ[3]), cos(ωt+φ[4]))
-    sn = SVector(sin(ωt+φ[1]), sin(ωt+φ[2]), sin(ωt+φ[3]), sin(ωt+φ[4]))
-    ( C*s + 2*sum(A .* c .* b),  -2*ω*sum(A .* sn .* b) )
+    (C*s + 2*(cos(ωt)*dot(R, b) - sin(ωt)*dot(I, b)), -2ω*(sin(ωt)*dot(R, b) + cos(ωt)*dot(I, b)))
 end
-
 # ===========================================================================
 #  4. PlanarStandingWaveFlagellum — single modal bank, in-plane (z ≡ 0).
 # ===========================================================================
@@ -245,19 +269,22 @@ mutable struct PlanarStandingWaveFlagellum{T <: Number} <: FlagellumModel
     L::T
     ω::T
     C::T                       # static curvature
-    A::SVector{4,T}            # mode amplitudes
-    ϕ::SVector{4,T}            # mode phases
+    R::SVector{4,T}            # real part of amplitudes
+    I::SVector{4,T}            # imaginary part of amplitudes
 end
 
+PlanarStandingWaveFlagellum(L, ω, C, R, I) = PlanarStandingWaveFlagellum(
+    Float64(L), Float64(ω), Float64(C), SVector{4,Float64}(R), SVector{4,Float64}(I)
+)
+
 @inline function unit_tangent(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number}
-    θ = _bank_angle(s, t, m.ω, m.C, m.A, m.ϕ)
+    θ = get_angle(s, t, m.ω, m.C, m.R, m.I)
     SVector(cos(θ), sin(θ), zero(T))
 end
 
 @inline function unit_tangent_and_dt(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number}
-    θ, θdot = _bank_angle_and_rate(s, t, m.ω, m.C, m.A, m.ϕ)
-    (SVector(cos(θ), sin(θ), zero(T)),
-     θdot * SVector(-sin(θ), cos(θ), zero(T)))
+    θ, θdot = get_angle_and_rate(s, t, m.ω, m.C, m.R, m.I)
+    (SVector(cos(θ), sin(θ), zero(T)), θdot * SVector(-sin(θ), cos(θ), zero(T)))
 end
 
 # ===========================================================================

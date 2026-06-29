@@ -1,17 +1,19 @@
-total_force(forces::AbstractVector{<:SVector}) = sum(forces)
+total_force(forces, disc::NearestDiscretisation) = sum(forces[n] for n in disc.nearest)
 
-function total_torque(forces::AbstractVector{<:SVector}, disc::NearestDiscretisation)
-    sum(cross(disc.quad_pts[i], forces[disc.nearest[i]]) for i in eachindex(disc.quad_pts))
+function total_torque(forces, disc::NearestDiscretisation)
+    @unpack quad_pts, nearest = disc
+    sum(cross(quad_pts[i], forces[nearest[i]]) for i in eachindex(quad_pts))
 end
 
 function total_torque(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
+    @unpack quad_pts, nearest = disc
     sum(cross(disc.force_pts[i], forces[i]) for i in eachindex(disc.force_pts))
 end
 
 function total_force_and_torque(prob::InstantaneousProblem)
     check_solved!(prob)
     forces = get_forces(prob)
-    total_force(forces), total_torque(forces, prob.disc)
+    total_force(forces, prob.disc), total_torque(forces, prob.disc)
 end
 
 

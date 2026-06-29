@@ -271,7 +271,6 @@ function assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
     A .*= inv(8π*μ)
 end
 
-# Dispatch wrappers for assemble_swimming! — same pattern as assemble!
 assemble_swimming!(A, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
     assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
 
