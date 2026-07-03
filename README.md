@@ -2,7 +2,7 @@
 
 MicroSwimmers.jl is a Julia package for simulating low-Reynolds number swimmers like protists and spermatozoa. The core method is an implementation of the regularised-stokeslet boundary-element method with nearest-neighbour discretisation ([Smith 2009](https://doi.org/10.1016/j.jcp.2017.12.008)). The package also contains tools for constructing generic microswimmers through parameterised body and cilia/flagella models, calculating fluid flows and quantifying outputs such as swimming trajectories and fluxes. Visualisation tools for MicroSwimmers.jl simulations can be found in the separate package [MicroSwimmersPlots.jl](https://github.com/micromotility-lab/MicroSwimmersPlots.jl).
 
-This package has been developed by James Cass as a postdoc in the [micromotility lab](https://micromotility.com/) led by Kirsty Wan, in the University of Exeter's Living Systems Institute.
+This package is developed by James Cass as a postdoc in the [micromotility lab](https://micromotility.com/) led by Kirsty Wan, in the University of Exeter's Living Systems Institute.
 
 ## Installation
 
