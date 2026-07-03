@@ -400,10 +400,7 @@ function SwimmingTrajectoryProblem(
     T = Float64
     sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu))
 
-    x0_0 = SVector{3,T}(x0)
-    b1_0 = SVector{3,T}(B[:,1])
-    b2_0 = SVector{3,T}(B[:,2])
-    X0   = vcat(x0_0, b1_0, b2_0)
+    X0   = SVector{9,T}(x0..., B[:,1]..., B[:,2]...)
 
     function rhs(X, p, t)
         x0 = SVector{3,T}(X[1:3])
@@ -412,7 +409,7 @@ function SwimmingTrajectoryProblem(
         move_boundary!(sprob, x0, b1, b2, t)
         solve_problem!(sprob)
         Ω = get_Ω(sprob)
-        vcat(get_U(sprob), cross(Ω, b1), cross(Ω, b2))
+        SVector{9,T}(get_U(sprob)..., cross(Ω, b1)..., cross(Ω, b2)...)
     end
 
     SwimmingTrajectoryProblem(

@@ -1,4 +1,4 @@
-struct Part{M <: Model, D <: Discretisation}
+struct Part{M <: Model, D <: Discretisation} <: FluidBoundary
     model::M
     disc::D
     frame::Frame{Float64}
@@ -15,7 +15,7 @@ function Part(model::Model, N, Q; location=zero(SVector{3, Float64}), orientatio
     part
 end
 
-update_boundary!(part::Part, t) = part.model(part.disc, t)
+update_boundary!(part::Part, t::T) where {T <: Number} = part.model(part.disc, t)
 
 mutable struct MicroSwimmer{P <: Part} <: AbstractMicroSwimmer
     parts::Vector{P}
