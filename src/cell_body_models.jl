@@ -36,6 +36,8 @@ mutable struct EllipsoidBody{T <: Number} <: CellBodyModel
 end
 
 (m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = pts_fn(m.a, m.b, m.c, N)
+
+
 function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, t::T) where {T <: Number}
     points .= m(length(points))
 end
@@ -57,14 +59,14 @@ mutable struct EllipsoidalGroovedBody{T <: Number} <: CellBodyModel
     orientation::SMatrix{3,3,T}
 end
 
-EllipsoidalGroovedBody(a::T, b::T, c::T, groove_center::Vector{T}; orientation=I3) where {T <: Number} = EllipsoidalGroovedBody(
+EllipsoidalGroovedBody(a::T, b::T, c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T}(I)) where {T <: Number} = EllipsoidalGroovedBody(
     a, b, c,
     a, b, c,
     groove_center,
     orientation
 )
 
-EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::Vector{T}; orientation=I3) where {T <: Number} = EllipsoidalGroovedBody(
+EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T}(I)) where {T <: Number} = EllipsoidalGroovedBody(
     a, b, c,
     g_a, g_b, g_c,
     groove_center,

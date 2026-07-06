@@ -303,6 +303,11 @@ mutable struct ThreeDimensionalStandingWaveFlagellum{T <: Number} <: FlagellumMo
     Iᵩ::SVector{4,T}           # azimuth mode imaginary part
 end
 
+ThreeDimensionalStandingWaveFlagellum(L, ω, C_θ, R_θ, I_θ, Cᵩ, Rᵩ, Iᵩ) = ThreeDimensionalStandingWaveFlagellum(
+    Float64(L), Float64(ω), Float64(C_θ), SVector{4,Float64}(R_θ), SVector{4,Float64}(I_θ),
+    Float64(Cᵩ), SVector{4,Float64}(Rᵩ), SVector{4,Float64}(Iᵩ)
+)
+
 @inline function unit_tangent(s::T, t::T, m::ThreeDimensionalStandingWaveFlagellum) where {T<:Number}
     θ = get_angle(s, t, m.ω, m.C_θ, m.R_θ, m.I_θ)
     ϕ = get_angle(s, t, m.ω, m.Cᵩ, m.Rᵩ, m.Iᵩ)
