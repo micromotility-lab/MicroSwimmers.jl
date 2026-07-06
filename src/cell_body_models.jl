@@ -1,11 +1,11 @@
 abstract type Model end
 abstract type CellBodyModel <: Model end
 
-function (m::CellBodyModel)(disc::NearestDiscretisation, t)
+function (m::CellBodyModel)(disc::NearestDiscretisation)
       T = eltype(eltype(disc.force_pts))
-      m(disc.force_pts, disc.velocity, T(t))
-      m(disc.quad_pts, T(t))
-  end
+      m(disc.force_pts, disc.velocity)
+      m(disc.quad_pts)
+end
 
 # Nearest spacing helper functions for cell bodies
 
@@ -38,11 +38,11 @@ end
 (m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = pts_fn(m.a, m.b, m.c, N)
 
 
-function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, t::T) where {T <: Number}
+function (m::EllipsoidBody)(points::Vector{SVector{3,T}}) where {T <: Number}
     points .= m(length(points))
 end
 
-function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}, t::T) where {T <: Number}
+function (m::EllipsoidBody)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}) where {T <: Number}
     points .= m(length(points))
     velocities .= Ref(zero(SVector{3,T}))
 end

@@ -10,12 +10,18 @@ function Part(model::Model, N, Q; location=zero(SVector{3, Float64}), orientatio
         NearestDiscretisation(N, Q),
         Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
     )
-    update_boundary!(part, 0.0)
+    init_boundary!(part)
     nearest_neighbour!(part.disc)
     part
 end
 
-update_boundary!(part::Part, t::T) where {T <: Number} = part.model(part.disc, t)
+init_boundary!(part::Part)                  = init_boundary!(part.model, part.disc)
+init_boundary!(m::FlagellumModel, disc)          = m(disc, 0.0)     # place at t=0
+init_boundary!(m::CellBodyModel, disc)               = m(disc)          # fixed cloud
+
+update_boundary!(part::Part, t::T) where {T <: Number} = update_boundary!(part.model, part.disc, t)
+update_boundary!(::Model, disc, t::T) where {T <: Number} = nothing          # static default
+update_boundary!(m::FlagellumModel, disc, t::T) where {T <: Number} = m(disc, t)       # deforming opts in
 
 mutable struct MicroSwimmer{P <: Part} <: AbstractMicroSwimmer
     parts::Vector{P}
