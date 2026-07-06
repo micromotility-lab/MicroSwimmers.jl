@@ -1,7 +1,7 @@
 name = "MicroSwimmers"
 uuid = "ef328505-3371-4e33-b87d-074fe3df2cb3"
 authors = ["James Cass <j.cass@exeter.ac.uk>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
