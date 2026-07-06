@@ -1,12 +1,13 @@
 name = "MicroSwimmers"
 uuid = "ef328505-3371-4e33-b87d-074fe3df2cb3"
-authors = ["James Cass <j.cass@exeter.ac.uk>"]
 version = "0.2.0"
+authors = ["James Cass <j.cass@exeter.ac.uk>"]
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
 DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
@@ -22,6 +23,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 DSP = "0.8.4"
 DiffEqBase = "6.183.2"
 FastGaussQuadrature = "1.0.2"
+ForwardDiff = "1.4.1"
 GeometryBasics = "0.5.10"
 LinearSolve = "3.37.0"
 LsqFit = "0.15.1"

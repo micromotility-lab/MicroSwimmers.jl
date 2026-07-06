@@ -28,7 +28,6 @@ function hq(model::CellBodyModel; Qs=[(2^i)*400 + 7 for i in 1:6])
 end
 
 
-
 mutable struct EllipsoidBody{T <: Number} <: CellBodyModel
     a::T
     b::T 

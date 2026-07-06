@@ -16,12 +16,13 @@ function Part(model::Model, N, Q; location=zero(SVector{3, Float64}), orientatio
 end
 
 init_boundary!(part::Part)                  = init_boundary!(part.model, part.disc)
-init_boundary!(m::FlagellumModel, disc)          = m(disc, 0.0)     # place at t=0
-init_boundary!(m::CellBodyModel, disc)               = m(disc)          # fixed cloud
+init_boundary!(m::FlagellumModel, disc)     = m(disc, 0.0)     # place at t=0
+init_boundary!(m::CellBodyModel, disc)      = m(disc)          # fixed cloud
+init_boundary!(m::ImplicitBodyModel, disc)  = m(disc)          # implicit body 
 
 update_boundary!(part::Part, t::T) where {T <: Number} = update_boundary!(part.model, part.disc, t)
-update_boundary!(::Model, disc, t::T) where {T <: Number} = nothing          # static default
-update_boundary!(m::FlagellumModel, disc, t::T) where {T <: Number} = m(disc, t)       # deforming opts in
+update_boundary!(::Model, disc::Discretisation, t::T) where {T <: Number} = nothing          # static default
+update_boundary!(m::FlagellumModel, disc::Discretisation, t::T) where {T <: Number} = m(disc, t)       # deforming opts in
 
 mutable struct MicroSwimmer{P <: Part} <: AbstractMicroSwimmer
     parts::Vector{P}

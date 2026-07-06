@@ -16,6 +16,10 @@ export Part, MicroSwimmer
 # Cell body models
 export EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody
 
+# Implicit body models
+export ImplicitBodyModel, ImplicitEllipsoid
+export implicit, bounding_radius
+
 # Flagellum models
 export PlanarFlagellum, QuasiPlanarFlagellum, ThreeDimensionalFlagellum
 export PlanarStandingWaveFlagellum, ThreeDimensionalStandingWaveFlagellum

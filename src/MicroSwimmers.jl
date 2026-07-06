@@ -13,6 +13,7 @@ using Statistics
 # using Meshing
 using FastGaussQuadrature
 using DSP
+using ForwardDiff
 
 include("maths.jl")
 include("geometry.jl")
@@ -21,6 +22,7 @@ include("discretisations.jl")
 include("numerics.jl")
 include("boundary.jl")
 include("cell_body_models.jl")
+include("implicit_body.jl")
 include("flagellum_models.jl")
 include("microswimmer.jl")
 include("trajectories.jl")
