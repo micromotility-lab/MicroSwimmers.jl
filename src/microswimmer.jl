@@ -4,13 +4,26 @@ struct Part{M <: Model, D <: Discretisation} <: FluidBoundary
     frame::Frame{Float64}
 end
 
-function Part(model::Model, N, Q; location=zero(SVector{3, Float64}), orientation=I3)
+
+function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3, Float64}), orientation=I3)
     part = Part(
         model,
         NearestDiscretisation(N, Q),
         Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
+        )
+        init_boundary!(part)
+        nearest_neighbour!(part.disc)
+        part
+    end
+    
+function Part(model::M, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3) where {M <: ImplicitBodyModel}
+    part = Part(
+        model,
+        NearestDiscretisation(),
+        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
     )
-    init_boundary!(part)
+    init_boundary!(model, part.disc, N, Q)
+    part.disc.nearest = zeros(Int, length(part.disc.quad_pts))
     nearest_neighbour!(part.disc)
     part
 end
@@ -18,7 +31,7 @@ end
 init_boundary!(part::Part)                  = init_boundary!(part.model, part.disc)
 init_boundary!(m::FlagellumModel, disc)     = m(disc, 0.0)     # place at t=0
 init_boundary!(m::CellBodyModel, disc)      = m(disc)          # fixed cloud
-init_boundary!(m::ImplicitBodyModel, disc)  = m(disc)          # implicit body 
+init_boundary!(m::ImplicitBodyModel, disc, N, Q)  = m(disc, N, Q)          # implicit body 
 
 update_boundary!(part::Part, t::T) where {T <: Number} = update_boundary!(part.model, part.disc, t)
 update_boundary!(::Model, disc::Discretisation, t::T) where {T <: Number} = nothing          # static default

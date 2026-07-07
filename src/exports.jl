@@ -17,7 +17,7 @@ export Part, MicroSwimmer
 export EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody
 
 # Implicit body models
-export ImplicitBodyModel, ImplicitEllipsoid
+export ImplicitBodyModel, ImplicitEllipsoid, ImplicitGroovedEllipsoid
 export implicit, bounding_radius
 
 # Flagellum models

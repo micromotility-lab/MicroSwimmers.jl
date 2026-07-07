@@ -131,10 +131,8 @@ function bisect(g, lo, hi; tol=1e-12, max_iter=60)
 end
 
 
-function raymarch_cloud!(pts, f, R; seed=zero(SVector{3,Float64}),
+function raymarch_cloud!(pts, f, R, N; seed=zero(SVector{3,Float64}),
                         num_steps=200, max_iter=60, tol=1e-12)
-    N = length(pts)
-    # pts, wts = SVector{3,Float64}[], Float64[]
     ΔΩ = 4π/N
     for i in 0:N-1
         d  = fib_dir(i, N)
@@ -145,7 +143,7 @@ function raymarch_cloud!(pts, f, R; seed=zero(SVector{3,Float64}),
                 t = bisect(τ -> f(seed + τ*d), ts[j], ts[j+1]; tol, max_iter)
                 p = seed + t*d
                 n = normalize(ForwardDiff.gradient(f, p))
-                pts[i+1] = p
+                push!(pts, p)
                 # wts[i+1] = t^2 * ΔΩ / abs(dot(n, d))
             end
         end
