@@ -328,10 +328,6 @@ function gather!(prob::ResistanceProblem{<:Any, <:NystromDiscretisation})
     end
 end
 
-function add_rigid_body_motion!(prob::ResistanceProblem, U, Ω)
-    prob.disc.velocity .= U .+ cross.(Ref(Ω), prob.disc.force_pts)
-end
-
 function get_forces(prob::ResistanceProblem)
     check_solved!(prob)
     fv = prob.force_vals

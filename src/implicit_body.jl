@@ -4,7 +4,7 @@ function (m::ImplicitBodyModel)(disc::NearestDiscretisation, N, Q)
       T = eltype(eltype(disc.force_pts))
       raymarch_cloud!(disc.force_pts, x -> implicit(m, x), bounding_radius(m), N; seed=seed(m))
       raymarch_cloud!(disc.quad_pts,  x -> implicit(m, x), bounding_radius(m), Q; seed=seed(m))
-      disc.velocity .= Ref(zero(SVector{3,T}))
+      disc.velocity = [zero(SVector{3,T}) for _ in 1:length(disc.force_pts)]
 end
 
 ## implicit equations for implicit bodies
@@ -20,7 +20,7 @@ mutable struct ImplicitEllipsoid{T <: Number} <: ImplicitBodyModel
     c::T 
 end
 
-implicit(m::ImplicitEllipsoid, x::SVector{3,T}) where {T <: Number} = (x[1]/m.a)^2 + (x[2]/m.b)^2 + (x[3]/m.c)^2 - 1.0
+implicit(m::ImplicitEllipsoid, x::SVector{3,T}) where {T <: Number} = ellipsoid(x, m.a, m.b, m.c)
 bounding_radius(m::ImplicitEllipsoid) = 1.2 * maximum([m.a, m.b, m.c])
 seed(m::ImplicitEllipsoid) = zero(SVector{3, eltype(m.a)})
 
@@ -33,6 +33,12 @@ mutable struct ImplicitGroovedEllipsoid{T <: Number} <: ImplicitBodyModel
     g_c::T
     groove_center::SVector{3,T}
     orientation::SMatrix{3,3,T}
+end
+
+mutable struct ImplicitGroovedEllipsoid{E <: ImplicitEllipsoid} <: ImplicitBodyModel
+    body::E
+    groove::E
+    groove_frame::Frame
 end
 
 function ImplicitGroovedEllipsoid(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center; orientation=SMatrix{3,3,T}(I)) where {T <: Number}

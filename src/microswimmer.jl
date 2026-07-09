@@ -16,6 +16,10 @@ function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), o
     part
 end
 
+function add_rigid_body_motion!(part::Part, U, Ω)
+    part.disc.velocity .= Ref(SVector{3}(U)) .+ cross.(Ref(SVector{3}(Ω)), part.disc.force_pts)
+end
+
 # fixed-cloud models: N,Q are final point counts → size the arrays
 make_discretisation(::Model, N, Q)             = NearestDiscretisation(N, Q)
 # raymarched models: N is a ray budget, cloud size unknown → start empty
@@ -46,17 +50,17 @@ MicroSwimmer(parts::Vector{P}) where {P <: Part} = MicroSwimmer(parts, Frame(zer
 update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> update_boundary!(p, t), ms.parts)
 
 function grand_resistance_matrix(ms::MicroSwimmer; eps=0.1)
-    prob = ResistanceProblem(cell, eps=eps)
     R = zeros(6,6)
 
     for (i, n) in enumerate([ex, ey, ez]) 
-        prob = ResistanceProblem(cell, eps=eps)
-        add_rigid_body_motion!(prob, n, [0.0, 0.0, 0.0])
+        prob = ResistanceProblem(ms, eps=eps)
+        [add_rigid_body_motion!(part, n, zero(SVector{3,Float64})) for part in prob.microswimmer.parts]
+        solve_problem!(prob)
         F, T = total_force_and_torque(prob)
         R[1:3, i] .= F
         R[4:6, i] .= T
         
-        add_rigid_body_motion!(prob, [0.0, 0.0, 0.0], n)
+        [add_rigid_body_motion!(part, zero(SVector{3,Float64}), n) for part in prob.microswimmer.parts]
         solve_problem!(prob)
         F, T = total_force_and_torque(prob)
         R[1:3, 3+i] .= F

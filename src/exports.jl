@@ -12,6 +12,7 @@ export Discretisation, NearestDiscretisation, NystromDiscretisation
 export nf, nq
 export Model, FlagellumModel, CellBodyModel
 export Part, MicroSwimmer
+export grand_resistance_matrix, add_rigid_body_motion!
 
 # Cell body models
 export EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody
