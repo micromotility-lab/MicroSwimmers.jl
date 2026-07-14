@@ -34,9 +34,9 @@ make_discretisation(::Model, N, Q)             = NearestDiscretisation(N, Q)
 # raymarched models: N is number of rays, cloud size unknown → start empty
 make_discretisation(::ImplicitBodyModel, N, Q) = NearestDiscretisation()
 function make_discretisation(m::PlanarVanedFlagellum, N, Q)
-    N_v = floor(Int, Nh(m.vane, N, m.flagellum.L)*Nv(m.vane, N))
-    Q_v = floor(Int, Nh(m.vane, Q, m.flagellum.L)*Nv(m.vane, Q))
-    NearestDiscretisation([N,N_v], [Q, Q_v])
+    N_v = vane_npoints(m.vane, N, m.flagellum.L, false)
+    Q_v = vane_npoints(m.vane, Q, m.flagellum.L, true)
+    NearestDiscretisation([N, N_v], [Q, Q_v])
 end
 
 
