@@ -101,26 +101,80 @@ nq(disc::NystromDiscretisation) = length(disc.force_pts)
 #     hf, hq
 # end
 
+# mutable struct NearestDiscretisation{T <: Number} <: Discretisation
+#     force_pts::Vector{SVector{3,T}}            # reference configuration force points
+#     velocity::Vector{SVector{3,T}}             # reference configuration velocities (at the force points)
+#     quad_pts::Vector{SVector{3,T}}             # reference configuration quadrature points
+#     nearest::Vector{Int}            # length Q
+# end
+
 mutable struct NearestDiscretisation{T <: Number} <: Discretisation
-    force_pts::Vector{SVector{3,T}}            # reference configuration force points
-    velocity::Vector{SVector{3,T}}             # reference configuration velocities (at the force points)
-    quad_pts::Vector{SVector{3,T}}             # reference configuration quadrature points
-    nearest::Vector{Int}            # length Q
+    force_pts::Vector{SVector{3,T}}
+    velocity::Vector{SVector{3,T}}
+    quad_pts::Vector{SVector{3,T}}
+    nearest::Vector{Int}
+    force_part_ranges::Vector{UnitRange{Int}}
+    quad_part_ranges::Vector{UnitRange{Int}}
 end
+
+function ranges_from_sizes(sizes)
+    ranges = Vector{UnitRange{Int}}(undef, length(sizes))
+    start = 1
+    for (i, s) in enumerate(sizes)
+        ranges[i] = start:(start + s - 1)
+        start += s
+    end
+    ranges
+end
+# one-liner equivalent:
+# ranges_from_sizes(sizes) = (stop = cumsum(sizes); UnitRange.(stop .- sizes .+ 1, stop))
+
+# size-driven constructor knows the partition, so it fills the ranges
+function NearestDiscretisation(nf_sizes::AbstractVector{<:Integer},
+                               nq_sizes::AbstractVector{<:Integer})
+    N = sum(nf_sizes); Q = sum(nq_sizes)
+    NearestDiscretisation(
+        Vector{SVector{3,Float64}}(undef, N),
+        Vector{SVector{3,Float64}}(undef, N),
+        Vector{SVector{3,Float64}}(undef, Q),
+        zeros(Int, Q),
+        ranges_from_sizes(nf_sizes),
+        ranges_from_sizes(nq_sizes),
+    )
+end
+
+# keep (N, Q) as a single-part fallback
+NearestDiscretisation(N::Int, Q::Int) = NearestDiscretisation([N], [Q])
 
 NearestDiscretisation() = NearestDiscretisation(
     SVector{3,Float64}[],
     SVector{3,Float64}[],
     SVector{3,Float64}[],
-    Int[]
+    Int[],
+    UnitRange{Int}[],
+    UnitRange{Int}[],
 )
 
-NearestDiscretisation(N::Int, Q::Int) = NearestDiscretisation(
-    Vector{SVector{3,Float64}}(undef, N),
-    Vector{SVector{3,Float64}}(undef, N),
-    Vector{SVector{3,Float64}}(undef, Q),
-    zeros(Int, Q)
-)
+# subview(d::NearestDiscretisation, f_rng, q_rng) = NearestDiscretisation(
+#     view(d.force_pts, f_rng), 
+#     view(d.velocity, f_rng), 
+#     view(d.quad_pts, q_rng),
+#     view(d.nearest, q_rng)
+# )
+
+# NearestDiscretisation() = NearestDiscretisation(
+#     SVector{3,Float64}[],
+#     SVector{3,Float64}[],
+#     SVector{3,Float64}[],
+#     Int[]
+# )
+
+# NearestDiscretisation(N::Int, Q::Int) = NearestDiscretisation(
+#     Vector{SVector{3,Float64}}(undef, N),
+#     Vector{SVector{3,Float64}}(undef, N),
+#     Vector{SVector{3,Float64}}(undef, Q),
+#     zeros(Int, Q)
+# )
 
 nf(disc::NearestDiscretisation) = length(disc.force_pts)
 nq(disc::NearestDiscretisation) = length(disc.quad_pts)

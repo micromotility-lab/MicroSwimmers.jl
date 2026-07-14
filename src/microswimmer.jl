@@ -4,6 +4,15 @@ struct Part{M <: Model, D <: Discretisation} <: FluidBoundary
     frame::Frame{Float64}
 end
 
+# function discretise(model::Model, disc::Discretisation, acc::Accessory..., location=zero(SVector{3,Float64}), orientation=I3)
+#     part = Part(
+#         model,
+#         disc,
+#         Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation)),
+#         acc
+#     )
+#     init_boundary!(part, )
+# end
 
 function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3)
     part = Part(
@@ -22,15 +31,24 @@ end
 
 # fixed-cloud models: N,Q are final point counts → size the arrays
 make_discretisation(::Model, N, Q)             = NearestDiscretisation(N, Q)
-# raymarched models: N is a ray budget, cloud size unknown → start empty
+# raymarched models: N is number of rays, cloud size unknown → start empty
 make_discretisation(::ImplicitBodyModel, N, Q) = NearestDiscretisation()
-    
+function make_discretisation(m::PlanarVanedFlagellum, N, Q)
+    N_v = floor(Int, Nh(m.vane, N, m.flagellum.L)*Nv(m.vane, N))
+    Q_v = floor(Int, Nh(m.vane, Q, m.flagellum.L)*Nv(m.vane, Q))
+    NearestDiscretisation([N,N_v], [Q, Q_v])
+end
+
+
 init_boundary!(part::Part)       = init_boundary!(part.model, part.disc)
 init_boundary!(part::Part, N, Q) = init_boundary!(part.model, part.disc)
 init_boundary!(part::Part{<:ImplicitBodyModel}, N, Q) =  init_boundary!(part.model, part.disc, N, Q)
         
-init_boundary!(m::FlagellumModel, disc)     = m(disc, 0.0)     # place at t=0
-init_boundary!(m::CellBodyModel, disc)      = m(disc)          # fixed cloud
+init_boundary!(m::FlagellumModel, disc)     = m(disc, 0.0)     
+init_boundary!(m::CellBodyModel, disc)      = m(disc)         
+# init_boundary!(m::PlanarVanedFlagellum, disc) = nothing
+
+
 function init_boundary!(m::ImplicitBodyModel, disc, N, Q)
     m(disc, N, Q)       
     disc.nearest = zeros(Int, length(disc.quad_pts))

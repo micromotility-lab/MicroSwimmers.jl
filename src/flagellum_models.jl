@@ -50,45 +50,45 @@ end
         points[i] = points[i-1] + (τ_prev + τ) * half_L_ds
         s_prev, τ_prev = s, τ
     end
-    return points
+    nothing
 end
 
 # position + velocity
 @inline function integrate_centreline!(points::AbstractVector{SVector{3,T}},
-                                       velocities::Vector{SVector{3,T}},
+                                       velocities::AbstractVector{SVector{3,T}},
                                        m::FlagellumModel, t::T;
                                        include_endpoints::Bool) where {T <: Number}
     N = length(points)
     s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
     half_L_ds  = T(0.5) * m.L * ds
 
-    τ_prev, τ̇_prev = unit_tangent_and_dt(s_prev, t, m)
+    τ_prev, τdot_prev = unit_tangent_and_dt(s_prev, t, m)
 
     if include_endpoints
         points[1]     = zero(SVector{3,T})
         velocities[1] = zero(SVector{3,T})
     else
-        τ0, τ̇0 = unit_tangent_and_dt(zero(T), t, m)
+        τ0, τdot0 = unit_tangent_and_dt(zero(T), t, m)
         points[1]     = (τ0  + τ_prev)  * half_L_ds
-        velocities[1] = (τ̇0 + τ̇_prev) * half_L_ds
+        velocities[1] = (τdot0 + τdot_prev) * half_L_ds
     end
 
     @inbounds for i in 2:N
         s = s_prev + ds
-        τ, τ̇ = unit_tangent_and_dt(s, t, m)
+        τ, τdot = unit_tangent_and_dt(s, t, m)
         points[i]     = points[i-1]     + (τ_prev  + τ)  * half_L_ds
-        velocities[i] = velocities[i-1] + (τ̇_prev + τ̇) * half_L_ds
-        s_prev, τ_prev, τ̇_prev = s, τ, τ̇
+        velocities[i] = velocities[i-1] + (τdot_prev + τdot) * half_L_ds
+        s_prev, τ_prev, τdot_prev= s, τ, τdot
     end
-    return points, velocities
+    nothing
 end
 
-@inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, t::T;
+@inline (m::FlagellumModel)(points::AbstractVector{SVector{3,T}}, t::T;
                             include_endpoints::Bool=false) where {T<:Number} =
     integrate_centreline!(points, m, t; include_endpoints)
 
 
-@inline (m::FlagellumModel)(points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}},
+@inline (m::FlagellumModel)(points::AbstractVector{SVector{3,T}}, velocities::AbstractVector{SVector{3,T}},
                             t::T; include_endpoints::Bool=false) where {T<:Number} =
     integrate_centreline!(points, velocities, m, t; include_endpoints)
 
@@ -170,10 +170,10 @@ end
     φ     = m.ω*t - 2*T(π)*sL/m.λ
     env   = m.A*(1 - exp(-sL/m.δ))
     θ     = env*sin(φ) + m.C*sL
-    θ̇    = m.ω*env*cos(φ)                          # true ∂θ/∂t
+    θdot   = m.ω*env*cos(φ)                          # true ∂θ/∂t
     scale = one(T)/sqrt(one(T) + (s*m.C_z)^2)
     (scale * SVector(cos(θ), sin(θ), m.C_z*s),
-     scale*θ̇ * SVector(-sin(θ), cos(θ), zero(T)))
+     scale*θdot* SVector(-sin(θ), cos(θ), zero(T)))
 end
 
 # ===========================================================================
@@ -209,14 +209,14 @@ end
     φϕ   = 2*T(π)*m.fᵩ *t - 2*T(π)*sL/m.λᵩ + m.γ
     θ    = envθ*sin(φθ) + m.C_θ*sL
     ϕ    = envϕ*sin(φϕ) + m.Cᵩ*sL
-    θ̇   = envθ * 2*T(π)*m.f_θ * cos(φθ)            # true ∂θ/∂t
+    θdot  = envθ * 2*T(π)*m.f_θ * cos(φθ)            # true ∂θ/∂t
     ϕ̇   = envϕ * 2*T(π)*m.fᵩ  * cos(φϕ)            # true ∂ϕ/∂t
 
     sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
     τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
-    τ̇ = θ̇ * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +         # ∂t̂/∂θ
+    τdot = θdot * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +         # ∂t̂/∂θ
          ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))      # ∂t̂/∂ϕ
-    (τ, τ̇)
+    (τ, τdot)
 end
 
 # ===========================================================================
