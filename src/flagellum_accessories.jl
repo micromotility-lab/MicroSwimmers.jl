@@ -63,33 +63,33 @@ function (v::Vane)(points::Vector{SVector{3,T}}, velocities::AbstractVector{SVec
         for (dst, src) in zip(cstart:cend, start:stop)
             p = points[src]
             points[dst] = SVector{3,T}(p[1], p[2], z)
-            v = velocities[src]
-            velocities[dst] = SVector{3,T}(v[1], v[2], zero(T))
+            vel = velocities[src]
+            velocities[dst] = SVector{3,T}(vel[1], vel[2], zero(T))
         end
     end
 end
 
-"""Flagellum with a vane (only extends in the z direction currently)"""
-function (m::PlanarVanedFlagellum)(
-    points::Vector{SVector{3,T}},
-    N_f::Int,
-    t::T
-) where {T <: Number}
-    m.flagellum(points, t)  # Fill flagellum points and velocities
-    m.vane(points, N_f, m.flagellum.L)
-end
+# """Flagellum with a vane (only extends in the z direction currently)"""
+# function (m::PlanarVanedFlagellum)(
+#     points::Vector{SVector{3,T}},
+#     N_f::Int,
+#     t::T
+# ) where {T <: Number}
+#     m.flagellum(points, t)  # Fill flagellum points and velocities
+#     m.vane(points, N_f, m.flagellum.L)
+# end
 
-function (m::PlanarVanedFlagellum)(
-    points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}, 
-    N_f::Int, 
-    t::T;
-    include_endpoints=false
-) where {T <: Number}
-    f_points = @view points[1:N_f]
-    f_velocities = @view velocities[1:N_f]
-    m.flagellum(f_points, f_velocities, t, include_endpoints=include_endpoints) 
-    m.vane(f_points, f_velocities, N_f, m.flagellum.L)
-end
+# function (m::PlanarVanedFlagellum)(
+#     points::Vector{SVector{3,T}}, velocities::Vector{SVector{3,T}}, 
+#     N_f::Int, 
+#     t::T;
+#     include_endpoints=false
+# ) where {T <: Number}
+#     f_points = @view points[1:N_f]
+#     f_velocities = @view velocities[1:N_f]
+#     m.flagellum(f_points, f_velocities, t, include_endpoints=include_endpoints) 
+#     m.vane(f_points, f_velocities, N_f, m.flagellum.L)
+# end
 
 function (m::PlanarVanedFlagellum)(disc::NearestDiscretisation, t::T) where {T <: Number}
     # force pts
@@ -99,6 +99,6 @@ function (m::PlanarVanedFlagellum)(disc::NearestDiscretisation, t::T) where {T <
 
     # quad pts
     q_rng = disc.quad_part_ranges[1]
-    m.flagellum(view(disc.quad_pts, q_rng), t, include_endpoints=false)
+    m.flagellum(view(disc.quad_pts, q_rng), t, include_endpoints=true)
     m.vane(disc.quad_pts, size(q_rng, 1), m.flagellum.L, true)
 end

@@ -25,7 +25,7 @@ export implicit, bounding_radius
 export PlanarFlagellum, QuasiPlanarFlagellum, ThreeDimensionalFlagellum
 export PlanarStandingWaveFlagellum, ThreeDimensionalStandingWaveFlagellum
 
-export Vane, PlanarVanedFlagellum
+export Vane, PlanarVanedFlagellum, nearest_index, Nh
 
 # Kernels
 export RegStokeslet, regularised_stokeslet!, regularised_blakelet!

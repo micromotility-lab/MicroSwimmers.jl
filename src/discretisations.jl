@@ -177,7 +177,9 @@ NearestDiscretisation() = NearestDiscretisation(
 # )
 
 nf(disc::NearestDiscretisation) = length(disc.force_pts)
+nf(disc::NearestDiscretisation, i::Int) = length(disc.force_part_ranges[i])  # per-part
 nq(disc::NearestDiscretisation) = length(disc.quad_pts)
+nq(disc::NearestDiscretisation, i::Int) = length(disc.quad_part_ranges[i])  # per-part
     
 
 # spacing between force points
