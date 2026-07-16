@@ -14,6 +14,9 @@ function nearest_index(s, N, include_endpoints)
     s0, ds = get_s0_and_ds(typeof(s), N, include_endpoints)
     clamp(round(Int, (s - s0) / ds) + 1, 1, N)
 end
+
+Nh(v::Vane, N_flagellum, L) = floor(Int, (N_flagellum * v.H) ÷ L)
+
 # total vane points for a given parametrisation
 function vane_npoints(v::Vane, N, L, include_endpoints)
     start  = nearest_index(v.s_start, N, include_endpoints)
@@ -21,10 +24,6 @@ function vane_npoints(v::Vane, N, L, include_endpoints)
     height = Nh(v, N, L)
     height * (stop - start + 1)
 end
-
-Nh(v::Vane, N_flagellum, L) = floor(Int, (N_flagellum * v.H) ÷ L)
-Nv(v::Vane, N_flagellum) = floor(Int, N_flagellum * (v.s_end - v.s_start))
-Nstart(v::Vane, N_flagellum) = floor(Int, N_flagellum*v.s_start)
 
 
 mutable struct PlanarVanedFlagellum{FM <: FlagellumModel} <: FlagellumModel
@@ -69,39 +68,6 @@ function (v::Vane)(points::Vector{SVector{3,T}}, velocities::AbstractVector{SVec
         end
     end
 end
-
-# function (v::Vane)(points::AbstractVector{SVector{3,T}}, velocities::AbstractVector{SVector{3,T}}, N_flagellum, L) where {T <: Number}
-#     height = Nh(v, N_flagellum, L)
-#     N_v = Nv(v, N_flagellum)
-#     start = Nstart(v, N_flagellum)
-#     # @info "" height N_v start
-#     for i in 1:height
-#         cstart = N_flagellum + (i-1)*N_v + 1
-#         cend   = N_flagellum + i*N_v
-
-#         z = -i*L / N_flagellum
-#         for (dst, src) in zip(cstart:cend, start:start+N_v-1)
-#             p = points[src]
-#             points[dst]     = SVector{3,T}(p[1], p[2], z)
-#             v = velocities[src]
-#             velocities[dst] = SVector{3,T}(v[1], v[2], zero(T))
-#         end
-#     end
-# end
-
-
-
-# function (m::PlanarVanedFlagellum)(disc, t)
-#     nb = length(disc.quad_pts) - sum(nquad, m.accessories)   # base count, recovered
-#     m.model(subview(disc, 1:nb), t)                          # reuse base's own fill
-#     off = nb
-#     for v in m.accessories
-#         rng = (off+1):(off+nquad(v))
-#         fill_vane!(disc, rng, m, v, t, ex)
-#         off += nquad(v)
-#     end
-#     disc
-# end
 
 """Flagellum with a vane (only extends in the z direction currently)"""
 function (m::PlanarVanedFlagellum)(

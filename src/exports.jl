@@ -35,6 +35,7 @@ export assemble!, assemble_swimming!
 export SwimmingProblem, ResistanceProblem, SwimmingTrajectoryProblem, ParticleTrajectoryProblem
 export solve_problem!
 export get_U, get_Ω, get_force_pts, get_forces
+export translate_problem!, rotate_problem!
 
 # Trajectories
 export Trajectory, average_swimming_velocity, continue_periodic_trajectory!, continue_periodic_trajectory

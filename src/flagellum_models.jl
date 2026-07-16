@@ -83,6 +83,7 @@ end
     nothing
 end
 
+
 @inline (m::FlagellumModel)(points::AbstractVector{SVector{3,T}}, t::T;
                             include_endpoints::Bool=false) where {T<:Number} =
     integrate_centreline!(points, m, t; include_endpoints)
@@ -276,6 +277,8 @@ end
 PlanarStandingWaveFlagellum(L, ω, C, R, I) = PlanarStandingWaveFlagellum(
     Float64(L), Float64(ω), Float64(C), SVector{4,Float64}(R), SVector{4,Float64}(I)
 )
+
+(m::PlanarStandingWaveFlagellum)(s::Float64, t::Float64) = get_angle(s, t, m.ω, m.C, m.R, m.I)
 
 @inline function unit_tangent(s::T, t::T, m::PlanarStandingWaveFlagellum) where {T<:Number}
     θ = get_angle(s, t, m.ω, m.C, m.R, m.I)

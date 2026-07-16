@@ -44,6 +44,75 @@ function stokeslet!(S::StaticMatrix{3,3,T}, R::StaticVector{3,T}) where {T<:Numb
     end
 end
 
+struct RegBlakelet{T} <: Kernel
+    eps::T
+end
+
+@inline function (k::RegBlakelet)(xi, Xj)
+    eps  = k.eps
+    eps2 = eps^2
+    h    = Xj[3]
+
+    stokeslet = RegStokeslet(eps)
+
+    # -------- real-space regularised stokeslet --------
+    S = stokeslet(xi, Xj)
+
+    # -------- image geometry (reflect source in z = 0) --------
+    Y    = @SVector [Xj[1], Xj[2], -Xj[3]]
+    Rimg = xi - Y
+    X1, X2, X3 = Rimg
+
+    Rsq  = dot(Rimg, Rimg)
+    dist = sqrt(Rsq + eps2)
+    iR   = inv(dist)
+    iR3  = iR^3
+    iR5  = iR^5
+
+    Δ = @SMatrix [one(eps)  zero(eps) zero(eps);
+                  zero(eps) one(eps)  zero(eps);
+                  zero(eps) zero(eps) -one(eps)]
+
+    P = @SMatrix [X1*X1  X1*X2  -X1*X3;
+                  X2*X1  X2*X2  -X2*X3;
+                  X3*X1  X3*X2  -X3*X3]
+
+    # -------- image regularised stokeslet (Smith: subtracted) --------
+    Simg = stokeslet(xi, Y)
+
+    # -------- blob (finite-eps) term --------
+    phi = 3eps2 * iR5
+    BT  = (-2h^2 * phi) .* Δ
+
+    # -------- potential source dipole --------
+    PD = (2h^2) .* (iR3 .* Δ .- 3iR5 .* P)
+
+    # -------- regularised stokes dipole --------
+    val = Rsq + 4eps2
+    a1  =  X1 * val * iR5
+    a2  =  X2 * val * iR5
+    a3  = -X3 * val * iR5
+    A = @SMatrix [zero(eps) zero(eps) zero(eps);
+                  zero(eps) zero(eps) zero(eps);
+                  a1        a2        a3]
+
+    Dterm = (X3 * iR3) .* Δ
+
+    C = @SMatrix [zero(eps) zero(eps) X1*iR3;
+                  zero(eps) zero(eps) X2*iR3;
+                  zero(eps) zero(eps) X3*iR3]
+
+    SD = (2h) .* (A .- Dterm .+ C .+ (3iR5*X3) .* P)
+
+    # -------- rotlet difference term --------
+    M = @SMatrix [-X3       zero(eps) zero(eps);
+                  zero(eps) -X3       zero(eps);
+                  X1        X2        zero(eps)]
+    RD = (-(6h*eps2*iR5)) .* M
+
+    S .- Simg .+ BT .+ PD .+ SD .+ RD
+end
+
 
 function regularised_blakelet!(B, T, x, X; eps=1e-6)
     @assert length(x) == 3

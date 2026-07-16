@@ -190,6 +190,7 @@ function hf(disc::NearestDiscretisation)
 end
 
 # spacing between quadrature points
+
 function hq(disc::NearestDiscretisation)
     @unpack quad_pts, nearest = disc
     N   = nf(disc)
