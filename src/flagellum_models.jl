@@ -211,12 +211,12 @@ end
     θ    = envθ*sin(φθ) + m.C_θ*sL
     ϕ    = envϕ*sin(φϕ) + m.Cᵩ*sL
     θdot  = envθ * 2*T(π)*m.f_θ * cos(φθ)            # true ∂θ/∂t
-    ϕ̇   = envϕ * 2*T(π)*m.fᵩ  * cos(φϕ)            # true ∂ϕ/∂t
+    ϕdot  = envϕ * 2*T(π)*m.fᵩ  * cos(φϕ)            # true ∂ϕ/∂t
 
     sθ, cθ = sincos(θ); sϕ, cϕ = sincos(ϕ)
     τ  = SVector(cθ*cϕ, cθ*sϕ, sθ)
     τdot = θdot * SVector(-sθ*cϕ, -sθ*sϕ, cθ) +         # ∂t̂/∂θ
-         ϕ̇ * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))      # ∂t̂/∂ϕ
+         ϕdot * SVector(-cθ*sϕ,  cθ*cϕ, zero(T))      # ∂t̂/∂ϕ
     (τ, τdot)
 end
 

@@ -196,7 +196,7 @@ mutable struct ResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation
     kernel::K
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1)
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false)
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
@@ -206,7 +206,7 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisat
         Float64(mu),
         LinearProblem(zeros(3N, 3N), zeros(3N)),
         nothing,
-        RegStokeslet(eps)
+        wall ? RegBlakelet(eps) : RegStokeslet(eps)
     )
     gather_nearest!(prob)
     prob
@@ -224,6 +224,8 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisat
         RegStokeslet(eps)
     )
 end
+
+update_boundary!(prob::ResistanceProblem, t::Number) = update_boundary!(prob.microswimmer, t)
 
 function gather_nearest!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob

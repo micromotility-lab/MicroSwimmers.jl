@@ -4,6 +4,7 @@ export hf, hq
 export fibonacci_cylinder, fibonacci_ellipsoid
 export is_inside_ellipsoid
 export spacing
+export unit_tangent, unit_tangent_and_dt
 
 # Core types
 export FluidBoundary, update_boundary!, move_boundary!
@@ -11,7 +12,7 @@ export Frame
 export Discretisation, NearestDiscretisation, NystromDiscretisation
 export nf, nq
 export Model, FlagellumModel, CellBodyModel
-export Part, MicroSwimmer
+export Part, MicroSwimmer, discretise
 export grand_resistance_matrix, add_rigid_body_motion!
 
 # Cell body models

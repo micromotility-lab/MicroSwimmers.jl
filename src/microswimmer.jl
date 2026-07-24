@@ -14,6 +14,17 @@ end
 #     init_boundary!(part, )
 # end
 
+function discretise(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3)
+    part = Part(
+        model, 
+        make_discretisation(model, N, Q), 
+        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
+    )
+    init_boundary!(part.model, part.disc)
+    nearest_neighbour!(part.disc)
+    part   
+end 
+
 function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3)
     part = Part(
         model,
