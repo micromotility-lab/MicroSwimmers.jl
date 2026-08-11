@@ -1,6 +1,6 @@
 abstract type Problem end
 
-abstract type InstantaneousProblem <: Problem end
+abstract type InstantaneousProblem{MS, D} <: Problem end
 abstract type DynamicProblem <: Problem end
 
 ###########################################################################################
@@ -55,7 +55,7 @@ function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix{T}) where
     prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T}(B) * fr.orientation)
 end
 
-function gather_nearest!(prob::InstantaneousProblem)
+function gather_nearest!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
     for i in eachindex(microswimmer.parts)
         part  = microswimmer.parts[i]
@@ -66,7 +66,7 @@ function gather_nearest!(prob::InstantaneousProblem)
     end
 end
 
-function gather!(prob::InstantaneousProblem)
+function gather!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
     for i in eachindex(microswimmer.parts)
         part      = microswimmer.parts[i]
@@ -79,24 +79,24 @@ function gather!(prob::InstantaneousProblem)
     end
 end
 
-# function gather!(prob::InstantaneousProblem{<:Any, <:NystromDiscretisation})
-#     @unpack microswimmer, disc = prob
-#     fstart = 1
-#     for part in microswimmer.parts
-#         lab_frame = microswimmer.frame * part.frame
-#         nf_i      = nf(part.disc)
-#         f_rng     = fstart:fstart+nf_i-1
-#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-#         fstart += nf_i
-#     end
-# end
+function gather!(prob::InstantaneousProblem{<:Any, <:NystromDiscretisation})
+    @unpack microswimmer, disc = prob
+    fstart = 1
+    for part in microswimmer.parts
+        lab_frame = microswimmer.frame * part.frame
+        nf_i      = nf(part.disc)
+        f_rng     = fstart:fstart+nf_i-1
+        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+        fstart += nf_i
+    end
+end
 
 ###########################################################################################
 ### SwimmingProblem #######################################################################
 ###########################################################################################
 
-mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel} <: InstantaneousProblem
+mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
@@ -122,20 +122,20 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
     prob
 end
 
-# function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
-#     nf_sizes = [nf(p.disc) for p in ms.parts]
-#     N        = sum(nf_sizes)
-#     prob = SwimmingProblem(
-#         ms,
-#         NystromDiscretisation(N),
-#         Float64(mu),
-#         LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
-#         nothing,
-#         RegStokeslet(eps)
-#     )
-#     update_boundary!(prob, 0.0)
-#     prob
-# end
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
+    nf_sizes = [nf(p.disc) for p in ms.parts]
+    N        = sum(nf_sizes)
+    prob = SwimmingProblem(
+        ms,
+        NystromDiscretisation(N),
+        Float64(mu),
+        LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
+        nothing,
+        RegStokeslet(eps)
+    )
+    update_boundary!(prob, 0.0)
+    prob
+end
 
 # function gather_nearest!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
 #     @unpack microswimmer, disc = prob
@@ -225,7 +225,7 @@ end
 ### ResistanceProblem #####################################################################
 ###########################################################################################
 
-mutable struct ResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem
+mutable struct ResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
