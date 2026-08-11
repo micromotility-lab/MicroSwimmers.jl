@@ -74,7 +74,7 @@ mutable struct MicroSwimmer{P <: Part} <: AbstractMicroSwimmer
     frame::Frame{Float64}
 end
 
-MicroSwimmer(parts::Vector{P}) where {P <: Part} = MicroSwimmer(parts, Frame(zero(SVector{3}), I3))
+MicroSwimmer(parts::Vector{P}; location=zero(SVector{3}), orientation=I3) where {P <: Part} = MicroSwimmer(parts, Frame(location, orientation))
 
 update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> update_boundary!(p, t), ms.parts)
 
