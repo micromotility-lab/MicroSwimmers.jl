@@ -217,7 +217,7 @@ function solve_problem!(prob::SwimmingProblem)
     T  = eltype(eltype(disc.velocity))
     @views lin_prob.b[1:N3] .= reinterpret(T, disc.velocity)
     @views lin_prob.b[N3+1:end] .= zero(T)
-    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
+    prob.force_vals = solve(lin_prob).u
 end
 
 
@@ -315,7 +315,7 @@ function solve_problem!(prob::ResistanceProblem)
     gather!(prob)
     assemble!(lin_prob.A, disc, kernel; μ=mu)
     lin_prob.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
-    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
+    prob.force_vals = solve(lin_prob).u
 end
 
 # # Old ResistanceProblem — Flagellate/CellBody/Flagellum API (Matrix-based discretisation)
