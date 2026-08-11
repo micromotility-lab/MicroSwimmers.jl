@@ -55,6 +55,43 @@ function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix{T}) where
     prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T}(B) * fr.orientation)
 end
 
+function gather_nearest!(prob::InstantaneousProblem)
+    @unpack microswimmer, disc = prob
+    for i in eachindex(microswimmer.parts)
+        part  = microswimmer.parts[i]
+        f_rng = disc.force_part_ranges[i]
+        q_rng = disc.quad_part_ranges[i]
+        foff  = first(f_rng) - 1
+        @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
+    end
+end
+
+function gather!(prob::InstantaneousProblem)
+    @unpack microswimmer, disc = prob
+    for i in eachindex(microswimmer.parts)
+        part      = microswimmer.parts[i]
+        lab_frame = microswimmer.frame * part.frame
+        f_rng     = disc.force_part_ranges[i]
+        q_rng     = disc.quad_part_ranges[i]
+        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+        @views disc.quad_pts[q_rng]  .= lab_frame.(part.disc.quad_pts)
+    end
+end
+
+# function gather!(prob::InstantaneousProblem{<:Any, <:NystromDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     fstart = 1
+#     for part in microswimmer.parts
+#         lab_frame = microswimmer.frame * part.frame
+#         nf_i      = nf(part.disc)
+#         f_rng     = fstart:fstart+nf_i-1
+#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+#         fstart += nf_i
+#     end
+# end
+
 ###########################################################################################
 ### SwimmingProblem #######################################################################
 ###########################################################################################
@@ -85,57 +122,57 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
     prob
 end
 
-function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
-    nf_sizes = [nf(p.disc) for p in ms.parts]
-    N        = sum(nf_sizes)
-    prob = SwimmingProblem(
-        ms,
-        NystromDiscretisation(N),
-        Float64(mu),
-        LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
-        nothing,
-        RegStokeslet(eps)
-    )
-    update_boundary!(prob, 0.0)
-    prob
-end
+# function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
+#     nf_sizes = [nf(p.disc) for p in ms.parts]
+#     N        = sum(nf_sizes)
+#     prob = SwimmingProblem(
+#         ms,
+#         NystromDiscretisation(N),
+#         Float64(mu),
+#         LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
+#         nothing,
+#         RegStokeslet(eps)
+#     )
+#     update_boundary!(prob, 0.0)
+#     prob
+# end
 
-function gather_nearest!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
-    @unpack microswimmer, disc = prob
-    for i in eachindex(microswimmer.parts)
-        part  = microswimmer.parts[i]
-        f_rng = disc.force_part_ranges[i]
-        q_rng = disc.quad_part_ranges[i]
-        foff  = first(f_rng) - 1
-        @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
-    end
-end
+# function gather_nearest!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     for i in eachindex(microswimmer.parts)
+#         part  = microswimmer.parts[i]
+#         f_rng = disc.force_part_ranges[i]
+#         q_rng = disc.quad_part_ranges[i]
+#         foff  = first(f_rng) - 1
+#         @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
+#     end
+# end
 
-function gather!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
-    @unpack microswimmer, disc = prob
-    for i in eachindex(microswimmer.parts)
-        part      = microswimmer.parts[i]
-        lab_frame = microswimmer.frame * part.frame
-        f_rng     = disc.force_part_ranges[i]
-        q_rng     = disc.quad_part_ranges[i]
-        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-        @views disc.quad_pts[q_rng]  .= lab_frame.(part.disc.quad_pts)
-    end
-end
+# function gather!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     for i in eachindex(microswimmer.parts)
+#         part      = microswimmer.parts[i]
+#         lab_frame = microswimmer.frame * part.frame
+#         f_rng     = disc.force_part_ranges[i]
+#         q_rng     = disc.quad_part_ranges[i]
+#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+#         @views disc.quad_pts[q_rng]  .= lab_frame.(part.disc.quad_pts)
+#     end
+# end
 
-function gather!(prob::SwimmingProblem{<:Any, <:NystromDiscretisation})
-    @unpack microswimmer, disc = prob
-    fstart = 1
-    for part in microswimmer.parts
-        lab_frame = microswimmer.frame * part.frame
-        nf_i      = nf(part.disc)
-        f_rng     = fstart:fstart+nf_i-1
-        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-        fstart += nf_i
-    end
-end
+# function gather!(prob::SwimmingProblem{<:Any, <:NystromDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     fstart = 1
+#     for part in microswimmer.parts
+#         lab_frame = microswimmer.frame * part.frame
+#         nf_i      = nf(part.disc)
+#         f_rng     = fstart:fstart+nf_i-1
+#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+#         fstart += nf_i
+#     end
+# end
 
 get_force_pts(prob::SwimmingProblem) = prob.disc.force_pts
 
@@ -160,7 +197,7 @@ end
 
 function update_boundary!(prob::SwimmingProblem, t::Number)
     update_boundary!(prob.microswimmer, t)
-    gather!(prob)
+    # gather!(prob)
 end
 
 function move_boundary!(prob::SwimmingProblem, x0::AbstractVector, B::AbstractMatrix, t::T) where {T <: Number} 
@@ -174,6 +211,7 @@ end
 
 function solve_problem!(prob::SwimmingProblem)
     @unpack lin_prob, disc, kernel, mu, microswimmer = prob
+    gather!(prob)
     assemble_swimming!(lin_prob.A, microswimmer.frame.location, disc, kernel; μ=mu)
     N3 = 3 * nf(disc)
     T  = eltype(eltype(disc.velocity))
@@ -212,57 +250,58 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisat
     prob
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
-    nf_sizes = [nf(p.disc) for p in ms.parts]
-    N        = sum(nf_sizes)
-    ResistanceProblem(
-        ms,
-        NystromDiscretisation(N),
-        Float64(mu),
-        LinearProblem(zeros(3N, 3N), zeros(3N)),
-        nothing,
-        RegStokeslet(eps)
-    )
-end
+# function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
+#     nf_sizes = [nf(p.disc) for p in ms.parts]
+#     N        = sum(nf_sizes)
+#     ResistanceProblem(
+#         ms,
+#         NystromDiscretisation(N),
+#         Float64(mu),
+#         LinearProblem(zeros(3N, 3N), zeros(3N)),
+#         nothing,
+#         RegStokeslet(eps)
+#     )
+# end
 
 update_boundary!(prob::ResistanceProblem, t::Number) = update_boundary!(prob.microswimmer, t)
 
-function gather_nearest!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
-    @unpack microswimmer, disc = prob
-    for i in eachindex(microswimmer.parts)
-        part  = microswimmer.parts[i]
-        f_rng = disc.force_part_ranges[i]
-        q_rng = disc.quad_part_ranges[i]
-        foff  = first(f_rng) - 1
-        @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
-    end
-end
 
-function gather!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
-    @unpack microswimmer, disc = prob
-    for i in eachindex(microswimmer.parts)
-        part      = microswimmer.parts[i]
-        lab_frame = microswimmer.frame * part.frame
-        f_rng     = disc.force_part_ranges[i]
-        q_rng     = disc.quad_part_ranges[i]
-        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-        @views disc.quad_pts[q_rng]  .= lab_frame.(part.disc.quad_pts)
-    end
-end
+# function gather_nearest!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     for i in eachindex(microswimmer.parts)
+#         part  = microswimmer.parts[i]
+#         f_rng = disc.force_part_ranges[i]
+#         q_rng = disc.quad_part_ranges[i]
+#         foff  = first(f_rng) - 1
+#         @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
+#     end
+# end
 
-function gather!(prob::ResistanceProblem{<:Any, <:NystromDiscretisation})
-    @unpack microswimmer, disc = prob
-    fstart = 1
-    for part in microswimmer.parts
-        lab_frame = microswimmer.frame * part.frame
-        nf_i      = nf(part.disc)
-        f_rng     = fstart:fstart+nf_i-1
-        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-        fstart += nf_i
-    end
-end
+# function gather!(prob::ResistanceProblem{<:Any, <:NearestDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     for i in eachindex(microswimmer.parts)
+#         part      = microswimmer.parts[i]
+#         lab_frame = microswimmer.frame * part.frame
+#         f_rng     = disc.force_part_ranges[i]
+#         q_rng     = disc.quad_part_ranges[i]
+#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+#         @views disc.quad_pts[q_rng]  .= lab_frame.(part.disc.quad_pts)
+#     end
+# end
+
+# function gather!(prob::ResistanceProblem{<:Any, <:NystromDiscretisation})
+#     @unpack microswimmer, disc = prob
+#     fstart = 1
+#     for part in microswimmer.parts
+#         lab_frame = microswimmer.frame * part.frame
+#         nf_i      = nf(part.disc)
+#         f_rng     = fstart:fstart+nf_i-1
+#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+#         fstart += nf_i
+#     end
+# end
 
 function get_forces(prob::ResistanceProblem)
     check_solved!(prob)
