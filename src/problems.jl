@@ -487,7 +487,7 @@ function ParticleTrajectoryProblem(
     )
 end
 
-/function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
+function solve_problem!(prob::ParticleTrajectoryProblem; method=Tsit5())
     sol = solve(prob.ode_prob, method)
     prob.t = sol.t
     prob.trajectories = reduce(hcat, sol.u)

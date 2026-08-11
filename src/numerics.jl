@@ -78,7 +78,10 @@ end
                   X3*X1  X3*X2  -X3*X3]
 
     # -------- image regularised stokeslet (Smith: subtracted) --------
-    Simg = stokeslet(xi, Y)
+    # Rsq, iR3 already computed above for the higher-order terms — reuse them
+    # instead of recomputing dot(Rimg,Rimg) and a second sqrt/inv via stokeslet(xi, Y)
+    diag_img = (Rsq + 2eps2) * iR3
+    Simg = diag_img * I + (iR3 .* Rimg) * Rimg'
 
     # -------- blob (finite-eps) term --------
     phi = 3eps2 * iR5
@@ -148,7 +151,12 @@ function regularised_blakelet!(B, T, x, X; eps=1e-6)
                   X3*X1  X3*X2  -X3*X3]
 
     # -------- image regularised stokeslet (Smith: just negative) --------
-    regularised_stokeslet!(T, Rimg; eps=eps)
+    # Rsq, iR3 already computed above — avoid a second sqrt/dot inside regularised_stokeslet!
+    diag_img = Rsq + 2*eps^2
+    @inbounds for i in 1:3, j in 1:3
+        T[i,j] = diag_img * (i == j) + Rimg[i] * Rimg[j]
+        T[i,j] *= iR3
+    end
     B .-= T
 
     # -------- higher order terms (Smith) --------
