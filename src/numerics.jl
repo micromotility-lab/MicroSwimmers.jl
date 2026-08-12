@@ -1,4 +1,10 @@
-abstract type Kernel end 
+abstract type Kernel end
+
+# Whether assembly should thread the outer (force-point) loop for this kernel.
+# Measured on real problems: threading wins for RegBlakelet (~4x, compute-bound
+# per-call cost amortises the per-thread launch overhead) but loses for the much
+# cheaper RegStokeslet (~5x slower — dominated by that overhead). Default false.
+threaded_assembly(::Kernel) = false
 
 struct RegStokeslet{T} <: Kernel
     eps::T
@@ -47,6 +53,8 @@ end
 struct RegBlakelet{T} <: Kernel
     eps::T
 end
+
+threaded_assembly(::RegBlakelet) = true
 
 @inline function (k::RegBlakelet)(xi, Xj)
     eps  = k.eps
@@ -333,16 +341,28 @@ assemble!(A, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
 assemble!(A, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
     assemble!(A, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
 
+@inline function accumulate_row!(A, row, xm, quad_pts, nearest, kernel)
+    for (q, yq) in enumerate(quad_pts)
+        S   = kernel(xm, yq)
+        col = 3*nearest[q] - 2
+        @inbounds for b in 1:3, a in 1:3
+            A[row+a-1, col+b-1] += S[a,b]
+        end
+    end
+end
+
 function assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
     fill!(A, zero(eltype(A)))
-    for (q, yq) in enumerate(quad_pts)
-        col = 3*nearest[q] - 2
-        for (m, xm) in enumerate(force_pts)
-            S   = kernel(xm, yq)
-            row = 3m - 2
-            @inbounds for b in 1:3, a in 1:3
-                A[row+a-1, col+b-1] += S[a,b]
-            end
+    Nf = length(force_pts)
+    # m (force points) is the outer loop: each m owns a disjoint row block of
+    # A, so threads never race on the same A[row,col] accumulator when threaded.
+    if threaded_assembly(kernel)
+        @batch for m in 1:Nf
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, kernel)
+        end
+    else
+        for m in 1:Nf
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, kernel)
         end
     end
     A .*= inv(8π*μ)
@@ -362,17 +382,7 @@ function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
     fill!(A, zero(T))
 
     # BEM block: A[3m-2:3m, 3nearest[q]-2:3nearest[q]] += kernel(xm, yq)
-    for (q, yq) in enumerate(quad_pts)
-        col = 3*nearest[q] - 2
-        for (m, xm) in enumerate(force_pts)
-            S   = kernel(xm, yq)
-            row = 3m - 2
-            @inbounds for b in 1:3, a in 1:3
-                A[row+a-1, col+b-1] += S[a,b]
-            end
-        end
-    end
-    A[1:N3, 1:N3] .*= inv(8π * T(μ))
+    assemble!(view(A, 1:N3, 1:N3), force_pts, quad_pts, nearest, kernel; μ=μ)
 
     # Rigid body columns: U (cols N3+1:N3+3) and Ω (cols N3+4:N3+6)
     @inbounds for (m, xm) in enumerate(force_pts)
