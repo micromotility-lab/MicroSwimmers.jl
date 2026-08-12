@@ -125,215 +125,215 @@ threaded_assembly(::RegBlakelet) = true
 end
 
 
-function regularised_blakelet!(B, T, x, X; eps=1e-6)
-    @assert length(x) == 3
-    @assert length(X) == 3
+# function regularised_blakelet!(B, T, x, X; eps=1e-6)
+#     @assert length(x) == 3
+#     @assert length(X) == 3
 
-    # Clear
-    fill!(B, zero(eltype(B)))
+#     # Clear
+#     fill!(B, zero(eltype(B)))
 
-    # -------- real-space regularised stokeslet --------
-    R = x .- X
-    regularised_stokeslet!(B, R; eps=eps)   # your existing kernel
+#     # -------- real-space regularised stokeslet --------
+#     R = x .- X
+#     regularised_stokeslet!(B, R; eps=eps)   # your existing kernel
 
-    # -------- image geometry (reflect source in z=0) --------
-    Y = @SVector [X[1], X[2], -X[3]]
-    Rimg = x .- Y
-    X1, X2, X3 = Rimg
-    h = X[3]
+#     # -------- image geometry (reflect source in z=0) --------
+#     Y = @SVector [X[1], X[2], -X[3]]
+#     Rimg = x .- Y
+#     X1, X2, X3 = Rimg
+#     h = X[3]
 
-    Rsq  = X1^2 + X2^2 + X3^2
-    dist = sqrt(Rsq + eps^2)
-    iR   = inv(dist)
-    iR3  = iR^3
-    iR5  = iR^5
+#     Rsq  = X1^2 + X2^2 + X3^2
+#     dist = sqrt(Rsq + eps^2)
+#     iR   = inv(dist)
+#     iR3  = iR^3
+#     iR5  = iR^5
 
-    # Convenient matrices
-    Δ = @SMatrix [1.0 0.0 0.0;
-                  0.0 1.0 0.0;
-                  0.0 0.0 -1.0]
+#     # Convenient matrices
+#     Δ = @SMatrix [1.0 0.0 0.0;
+#                   0.0 1.0 0.0;
+#                   0.0 0.0 -1.0]
 
-    # P = [X1X1 X1X2 -X1X3; X2X1 X2X2 -X2X3; X3X1 X3X2 -X3X3]
-    P = @SMatrix [X1*X1  X1*X2  -X1*X3;
-                  X2*X1  X2*X2  -X2*X3;
-                  X3*X1  X3*X2  -X3*X3]
+#     # P = [X1X1 X1X2 -X1X3; X2X1 X2X2 -X2X3; X3X1 X3X2 -X3X3]
+#     P = @SMatrix [X1*X1  X1*X2  -X1*X3;
+#                   X2*X1  X2*X2  -X2*X3;
+#                   X3*X1  X3*X2  -X3*X3]
 
-    # -------- image regularised stokeslet (Smith: just negative) --------
-    # Rsq, iR3 already computed above — avoid a second sqrt/dot inside regularised_stokeslet!
-    diag_img = Rsq + 2*eps^2
-    @inbounds for i in 1:3, j in 1:3
-        T[i,j] = diag_img * (i == j) + Rimg[i] * Rimg[j]
-        T[i,j] *= iR3
-    end
-    B .-= T
+#     # -------- image regularised stokeslet (Smith: just negative) --------
+#     # Rsq, iR3 already computed above — avoid a second sqrt/dot inside regularised_stokeslet!
+#     diag_img = Rsq + 2*eps^2
+#     @inbounds for i in 1:3, j in 1:3
+#         T[i,j] = diag_img * (i == j) + Rimg[i] * Rimg[j]
+#         T[i,j] *= iR3
+#     end
+#     B .-= T
 
-    # -------- higher order terms (Smith) --------
+#     # -------- higher order terms (Smith) --------
 
-    # Blob term: BT = -2 h^2 * kron(Δ, phi)  with phi = 3 eps^2 iR^5
-    phi = 3 * eps^2 * iR5
-    B .+= (-2h^2 * phi) .* Δ
+#     # Blob term: BT = -2 h^2 * kron(Δ, phi)  with phi = 3 eps^2 iR^5
+#     phi = 3 * eps^2 * iR5
+#     B .+= (-2h^2 * phi) .* Δ
 
-    # Potential source dipole:
-    # PD = 2 h^2 * ( Δ*iR3 - 3*iR5*P )
-    B .+= (2h^2) .* (iR3 .* Δ .- 3*iR5 .* P)
+#     # Potential source dipole:
+#     # PD = 2 h^2 * ( Δ*iR3 - 3*iR5*P )
+#     B .+= (2h^2) .* (iR3 .* Δ .- 3*iR5 .* P)
 
-    # Regularised stokes dipole:
-    # SD = 2 h * ( A - Δ*(X3*iR3) + C + 3*iR5*X3*P )
-    #
-    # A: only row 3 nonzero
-    val = Rsq + 4eps^2
-    a1 = X1 * val * iR5
-    a2 = X2 * val * iR5
-    a3 = -X3 * val * iR5
-    A = @SMatrix [0.0 0.0 0.0;
-                  0.0 0.0 0.0;
-                  a1  a2  a3]
+#     # Regularised stokes dipole:
+#     # SD = 2 h * ( A - Δ*(X3*iR3) + C + 3*iR5*X3*P )
+#     #
+#     # A: only row 3 nonzero
+#     val = Rsq + 4eps^2
+#     a1 = X1 * val * iR5
+#     a2 = X2 * val * iR5
+#     a3 = -X3 * val * iR5
+#     A = @SMatrix [0.0 0.0 0.0;
+#                   0.0 0.0 0.0;
+#                   a1  a2  a3]
 
-    # -Δ*(X3*iR3)  (scalar times Δ)
-    Dterm = (X3 * iR3) .* Δ
+#     # -Δ*(X3*iR3)  (scalar times Δ)
+#     Dterm = (X3 * iR3) .* Δ
 
-    # C: only column 3 nonzero  (THIS is what your Julia version was missing)
-    C = @SMatrix [0.0 0.0 X1*iR3;
-                  0.0 0.0 X2*iR3;
-                  0.0 0.0 X3*iR3]
+#     # C: only column 3 nonzero  (THIS is what your Julia version was missing)
+#     C = @SMatrix [0.0 0.0 X1*iR3;
+#                   0.0 0.0 X2*iR3;
+#                   0.0 0.0 X3*iR3]
 
-    SD = (2h) .* (A .- Dterm .+ C .+ (3*iR5*X3) .* P)
-    B .+= SD
+#     SD = (2h) .* (A .- Dterm .+ C .+ (3*iR5*X3) .* P)
+#     B .+= SD
 
-    # Rotlet difference term:
-    # RD = -(6 h eps^2 iR^5) * ( [0;0;X1 X2 X3] - X3*I )
-    # For 3×3: [[-X3,0,0],[0,-X3,0],[X1,X2,0]]
-    M = @SMatrix [-X3  0.0 0.0;
-                  0.0 -X3 0.0;
-                  X1   X2  0.0]
-    RD = (-(6h*eps^2*iR5)) .* M
-    B .+= RD
-end
+#     # Rotlet difference term:
+#     # RD = -(6 h eps^2 iR^5) * ( [0;0;X1 X2 X3] - X3*I )
+#     # For 3×3: [[-X3,0,0],[0,-X3,0],[X1,X2,0]]
+#     M = @SMatrix [-X3  0.0 0.0;
+#                   0.0 -X3 0.0;
+#                   X1   X2  0.0]
+#     RD = (-(6h*eps^2*iR5)) .* M
+#     B .+= RD
+# end
 
 
 
-function resistance_matrix!(
-    A::AbstractMatrix{T},
-    force_pts::AbstractMatrix{T},
-    quad_pts::AbstractMatrix{T},
-    nearest::AbstractVector{Int},
-    eps::T;
-    μ::T=one(T),
-    wall::Bool=false
-) where {T <: Number}
-    fill!(A, zero(T))
-    S = MMatrix{3,3,T}(undef)
-    S2 = MMatrix{3,3,T}(undef)
+# function resistance_matrix!(
+#     A::AbstractMatrix{T},
+#     force_pts::AbstractMatrix{T},
+#     quad_pts::AbstractMatrix{T},
+#     nearest::AbstractVector{Int},
+#     eps::T;
+#     μ::T=one(T),
+#     wall::Bool=false
+# ) where {T <: Number}
+#     fill!(A, zero(T))
+#     S = MMatrix{3,3,T}(undef)
+#     S2 = MMatrix{3,3,T}(undef)
 
-    for i in axes(force_pts, 2)
-        xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
-        for j in axes(quad_pts, 2)
-            Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]] 
-            if wall
-                regularised_blakelet!(S, S2, xi, Xj;  eps=eps)
-            else
-                R = xi - Xj
-                regularised_stokeslet!(S, R; eps=eps)
-            end
-            # R = xi - Xj
-            # regularised_stokeslet!(S, R; eps=eps)
-            # stokeslet!(S, R)
+#     for i in axes(force_pts, 2)
+#         xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
+#         for j in axes(quad_pts, 2)
+#             Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]] 
+#             if wall
+#                 regularised_blakelet!(S, S2, xi, Xj;  eps=eps)
+#             else
+#                 R = xi - Xj
+#                 regularised_stokeslet!(S, R; eps=eps)
+#             end
+#             # R = xi - Xj
+#             # regularised_stokeslet!(S, R; eps=eps)
+#             # stokeslet!(S, R)
 
-            n = nearest[j]
-            @inbounds for p in 1:3, q in 1:3
-                A[3i-3+p, 3n-3+q] -= S[p,q]
-            end
-        end
-    end
-    A ./= (-T(8) * T(π) * μ)
-end
+#             n = nearest[j]
+#             @inbounds for p in 1:3, q in 1:3
+#                 A[3i-3+p, 3n-3+q] -= S[p,q]
+#             end
+#         end
+#     end
+#     A ./= (-T(8) * T(π) * μ)
+# end
 
-function resistance_matrix!(
-    A::AbstractMatrix{T},
-    force_pts::AbstractVector{T},
-    quad_pts::AbstractMatrix{T},
-    nearest::AbstractVector{Int},
-    eps::T;
-    μ::T=one(T),
-    wall::Bool=false
-) where {T <: Number}   
-    resistance_matrix!(A, reshape(force_pts, 3, 1), quad_pts, nearest, eps; μ=μ, wall=wall)
-end
+# function resistance_matrix!(
+#     A::AbstractMatrix{T},
+#     force_pts::AbstractVector{T},
+#     quad_pts::AbstractMatrix{T},
+#     nearest::AbstractVector{Int},
+#     eps::T;
+#     μ::T=one(T),
+#     wall::Bool=false
+# ) where {T <: Number}   
+#     resistance_matrix!(A, reshape(force_pts, 3, 1), quad_pts, nearest, eps; μ=μ, wall=wall)
+# end
 
-function swimming_matrix!(
-    A::Matrix{T},
-    x0::SVector{3,T},
-    force_pts::Matrix{T},
-    quad_pts::Matrix{T},
-    nearest::Vector{Int},
-    eps::T;
-    μ::T=one(T),
-    wall::Bool=false
-) where {T <: Number}
-    fill!(A, zero(T))
+# function swimming_matrix!(
+#     A::Matrix{T},
+#     x0::SVector{3,T},
+#     force_pts::Matrix{T},
+#     quad_pts::Matrix{T},
+#     nearest::Vector{Int},
+#     eps::T;
+#     μ::T=one(T),
+#     wall::Bool=false
+# ) where {T <: Number}
+#     fill!(A, zero(T))
 
-    S = MMatrix{3,3,T}(undef)
-    S2 = MMatrix{3,3,T}(undef)
-    diffvec = MVector{3,T}(undef)
+#     S = MMatrix{3,3,T}(undef)
+#     S2 = MMatrix{3,3,T}(undef)
+#     diffvec = MVector{3,T}(undef)
 
-    for i in axes(force_pts, 2)
-        xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
-        for j in axes(quad_pts, 2)
-            Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]]
+#     for i in axes(force_pts, 2)
+#         xi = @SVector [force_pts[1,i], force_pts[2,i], force_pts[3,i]]
+#         for j in axes(quad_pts, 2)
+#             Xj = @SVector [quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]]
 
-            n = nearest[j]
-            if wall
-                regularised_blakelet!(S, S2, xi, Xj;  eps=eps)
-            else
-                R = xi - Xj
-                regularised_stokeslet!(S, R; eps=eps)
-            end
-            @inbounds for p in 1:3, q in 1:3
-                A[3i-3+p, 3n-3+q] -= S[p,q]
-            end
-        end
+#             n = nearest[j]
+#             if wall
+#                 regularised_blakelet!(S, S2, xi, Xj;  eps=eps)
+#             else
+#                 R = xi - Xj
+#                 regularised_stokeslet!(S, R; eps=eps)
+#             end
+#             @inbounds for p in 1:3, q in 1:3
+#                 A[3i-3+p, 3n-3+q] -= S[p,q]
+#             end
+#         end
 
-        @inbounds for p in 1:3
-            A[3i-3+p, end-6+p] = -one(T)
-            diffvec[p] = force_pts[p,i] - x0[p]
-        end
+#         @inbounds for p in 1:3
+#             A[3i-3+p, end-6+p] = -one(T)
+#             diffvec[p] = force_pts[p,i] - x0[p]
+#         end
 
-        K = skew_symmetric_static(diffvec)
-        @inbounds for p in 1:3, q in 1:3
-            A[3i-3+p, end-3+q] = K[p,q]
-        end
-    end
+#         K = skew_symmetric_static(diffvec)
+#         @inbounds for p in 1:3, q in 1:3
+#             A[3i-3+p, end-3+q] = K[p,q]
+#         end
+#     end
 
-    nf = length(force_pts)
-    @inbounds A[1:nf, 1:nf] ./= (-T(8) * T(π) * μ)
+#     nf = length(force_pts)
+#     @inbounds A[1:nf, 1:nf] ./= (-T(8) * T(π) * μ)
 
-    for j in axes(quad_pts, 2)
-        n = nearest[j]
+#     for j in axes(quad_pts, 2)
+#         n = nearest[j]
 
-        @inbounds for d in 1:3
-            A[end-6+d, 3n-3+d] += one(T)
-        end
+#         @inbounds for d in 1:3
+#             A[end-6+d, 3n-3+d] += one(T)
+#         end
 
-        rq = SVector{3,T}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
+#         rq = SVector{3,T}(quad_pts[1,j], quad_pts[2,j], quad_pts[3,j]) - x0
 
-        Kq = skew_symmetric_static(rq)
-        @inbounds for p in 1:3, q in 1:3
-            A[end-3+p, 3n-3+q] += Kq[p,q]
-        end
-    end
-end
+#         Kq = skew_symmetric_static(rq)
+#         @inbounds for p in 1:3, q in 1:3
+#             A[end-3+p, 3n-3+q] += Kq[p,q]
+#         end
+#     end
+# end
 
-function swimming_matrix!(
-    A::Matrix{T},
-    x0::SVector{3,T},
-    points::NearestDiscretisation,
-    eps::T;
-    μ::T=one(T),
-    wall::Bool=false
-) where {T <: Number}
-    @unpack force_pts, quad_pts, nearest = points
-    swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; μ=μ, wall=wall)
-end
+# function swimming_matrix!(
+#     A::Matrix{T},
+#     x0::SVector{3,T},
+#     points::NearestDiscretisation,
+#     eps::T;
+#     μ::T=one(T),
+#     wall::Bool=false
+# ) where {T <: Number}
+#     @unpack force_pts, quad_pts, nearest = points
+#     swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; μ=μ, wall=wall)
+# end
 
 assemble!(A, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
     assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
