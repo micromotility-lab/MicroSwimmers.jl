@@ -43,5 +43,6 @@ include("problems.jl")
 include("forces_and_torques.jl")
 include("fluid.jl")
 include("exports.jl")
+include("swimmer_parameter.jl")
 
 end # module
