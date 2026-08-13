@@ -1,6 +1,6 @@
 abstract type Problem end
 
-abstract type InstantaneousProblem <: Problem end
+abstract type InstantaneousProblem{MS <: MicroSwimmer, D <: Discretisation} <: Problem end
 abstract type DynamicProblem <: Problem end
 
 ###########################################################################################
@@ -55,7 +55,7 @@ function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix{T}) where
     prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T}(B) * fr.orientation)
 end
 
-function gather_nearest!(prob::InstantaneousProblem)
+function gather_nearest!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
     for i in eachindex(microswimmer.parts)
         part  = microswimmer.parts[i]
@@ -66,7 +66,7 @@ function gather_nearest!(prob::InstantaneousProblem)
     end
 end
 
-function gather!(prob::InstantaneousProblem)
+function gather!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
     for i in eachindex(microswimmer.parts)
         part      = microswimmer.parts[i]
@@ -79,33 +79,33 @@ function gather!(prob::InstantaneousProblem)
     end
 end
 
-# function gather!(prob::InstantaneousProblem{<:Any, <:NystromDiscretisation})
-#     @unpack microswimmer, disc = prob
-#     fstart = 1
-#     for part in microswimmer.parts
-#         lab_frame = microswimmer.frame * part.frame
-#         nf_i      = nf(part.disc)
-#         f_rng     = fstart:fstart+nf_i-1
-#         @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
-#         @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
-#         fstart += nf_i
-#     end
-# end
+function gather!(prob::InstantaneousProblem{<:Any, <:NystromDiscretisation})
+    @unpack microswimmer, disc = prob
+    fstart = 1
+    for part in microswimmer.parts
+        lab_frame = microswimmer.frame * part.frame
+        nf_i      = nf(part.disc)
+        f_rng     = fstart:fstart+nf_i-1
+        @views disc.force_pts[f_rng] .= lab_frame.(part.disc.force_pts)
+        @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* part.disc.velocity
+        fstart += nf_i
+    end
+end
 
 ###########################################################################################
 ### SwimmingProblem #######################################################################
 ###########################################################################################
 
-mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel} <: InstantaneousProblem
+mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
-    lin_prob::LinearProblem
+    cache::C
     force_vals::Union{Nothing, Vector{T}}
     kernel::K
 end
 
-function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false)
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=LUFactorization())
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
@@ -113,7 +113,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
         ms,
         NearestDiscretisation(nf_sizes, nq_sizes),
         Float64(mu),
-        LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
+        init(LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)), alg),
         nothing,
         wall ? RegBlakelet(eps) : RegStokeslet(eps)
     )
@@ -122,20 +122,20 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
     prob
 end
 
-# function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1)
-#     nf_sizes = [nf(p.disc) for p in ms.parts]
-#     N        = sum(nf_sizes)
-#     prob = SwimmingProblem(
-#         ms,
-#         NystromDiscretisation(N),
-#         Float64(mu),
-#         LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)),
-#         nothing,
-#         RegStokeslet(eps)
-#     )
-#     update_boundary!(prob, 0.0)
-#     prob
-# end
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1, alg=LUFactorization())
+    nf_sizes = [nf(p.disc) for p in ms.parts]
+    N        = sum(nf_sizes)
+    prob = SwimmingProblem(
+        ms,
+        NystromDiscretisation(N),
+        Float64(mu),
+        init(LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)), alg),
+        nothing,
+        RegStokeslet(eps)
+    )
+    update_boundary!(prob, 0.0)
+    prob
+end
 
 # function gather_nearest!(prob::SwimmingProblem{<:Any, <:NearestDiscretisation})
 #     @unpack microswimmer, disc = prob
@@ -210,14 +210,15 @@ function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T
 end
 
 function solve_problem!(prob::SwimmingProblem)
-    @unpack lin_prob, disc, kernel, mu, microswimmer = prob
+    @unpack cache, disc, kernel, mu, microswimmer = prob
     gather!(prob)
-    assemble_swimming!(lin_prob.A, microswimmer.frame.location, disc, kernel; μ=mu)
+    assemble_swimming!(cache.A, microswimmer.frame.location, disc, kernel; μ=mu)
+    cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
     N3 = 3 * nf(disc)
     T  = eltype(eltype(disc.velocity))
     @views lin_prob.b[1:N3] .= reinterpret(T, disc.velocity)
     @views lin_prob.b[N3+1:end] .= zero(T)
-    prob.force_vals = solve(lin_prob).u
+    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
 end
 
 
@@ -225,16 +226,16 @@ end
 ### ResistanceProblem #####################################################################
 ###########################################################################################
 
-mutable struct ResistanceProblem{MS <: AbstractMicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, L <: LinearProblem} <: InstantaneousProblem
+mutable struct ResistanceProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
-    lin_prob::L
+    cache::C
     force_vals::Union{Nothing, Vector{T}}
     kernel::K
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false)
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=LUFactorization())
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
@@ -242,7 +243,7 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisat
         ms,
         NearestDiscretisation(nf_sizes, nq_sizes),
         Float64(mu),
-        LinearProblem(zeros(3N, 3N), zeros(3N)),
+        init(LinearProblem(zeros(3N, 3N), zeros(3N)), alg),
         nothing,
         wall ? RegBlakelet(eps) : RegStokeslet(eps)
     )
@@ -311,11 +312,11 @@ function get_forces(prob::ResistanceProblem)
 end
 
 function solve_problem!(prob::ResistanceProblem)
-    @unpack lin_prob, disc, kernel, mu = prob
+    @unpack cache, disc, kernel, mu = prob
     gather!(prob)
     assemble!(lin_prob.A, disc, kernel; μ=mu)
     lin_prob.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
-    prob.force_vals = solve(lin_prob).u
+    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
 end
 
 # # Old ResistanceProblem — Flagellate/CellBody/Flagellum API (Matrix-based discretisation)
@@ -361,17 +362,19 @@ end
 
 function SwimmingTrajectoryProblem(
     ms::MicroSwimmer;
-    x0=SVector(0.0, 0.0, 0.0),
-    B=I3,
+    # x0=SVector(0.0, 0.0, 0.0),
+    # B=I3,
     t_final=20.0,
     saveat=0.05,
-    eps=0.01,
-    mu=1.0
+    eps=0.1,
+    mu=1.0,
+    wall=false
 )
     T = Float64
-    sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu))
+    sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu), wall=wall)
 
-    X0   = SVector{9,T}(x0..., B[:,1]..., B[:,2]...)
+    X0 = SVector{9,T}(ms.frame.location..., ms.frame.orientation[:,1]..., ms.frame.orientation[:,2]...)
+    # X0   = SVector{9,T}(x0..., B[:,1]..., B[:,2]...)
 
     function rhs(X, p, t)
         x0 = SVector{3,T}(X[1:3])

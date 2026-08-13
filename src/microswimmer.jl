@@ -74,15 +74,15 @@ mutable struct MicroSwimmer{P <: Part} <: AbstractMicroSwimmer
     frame::Frame{Float64}
 end
 
-MicroSwimmer(parts::Vector{P}) where {P <: Part} = MicroSwimmer(parts, Frame(zero(SVector{3}), I3))
+MicroSwimmer(parts::Vector{P}; location=zero(SVector{3}), orientation=I3) where {P <: Part} = MicroSwimmer(parts, Frame(location, orientation))
 
 update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> update_boundary!(p, t), ms.parts)
 
-function grand_resistance_matrix(ms::MicroSwimmer; eps=0.1)
+function grand_resistance_matrix(ms::MicroSwimmer; eps=0.1, alg=LUFactorization())
     R = zeros(6,6)
 
-    for (i, n) in enumerate([ex, ey, ez]) 
-        prob = ResistanceProblem(ms, eps=eps)
+    for (i, n) in enumerate([ex, ey, ez])
+        prob = ResistanceProblem(ms, eps=eps, alg=alg)
         [add_rigid_body_motion!(part, n, zero(SVector{3,Float64})) for part in prob.microswimmer.parts]
         solve_problem!(prob)
         F, T = total_force_and_torque(prob)
