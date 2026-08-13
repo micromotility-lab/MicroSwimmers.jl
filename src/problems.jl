@@ -105,7 +105,7 @@ mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Num
     kernel::K
 end
 
-function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=MKLLUFactorization())
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=LUFactorization())
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
@@ -122,7 +122,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
     prob
 end
 
-function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1, alg=MKLLUFactorization())
+function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}}; mu=1.0, eps=0.1, alg=LUFactorization())
     nf_sizes = [nf(p.disc) for p in ms.parts]
     N        = sum(nf_sizes)
     prob = SwimmingProblem(
@@ -235,7 +235,7 @@ mutable struct ResistanceProblem{MS <: MicroSwimmer, D <: Discretisation, T <: N
     kernel::K
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=MKLLUFactorization())
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=LUFactorization())
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
