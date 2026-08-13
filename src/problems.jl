@@ -216,9 +216,9 @@ function solve_problem!(prob::SwimmingProblem)
     cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
     N3 = 3 * nf(disc)
     T  = eltype(eltype(disc.velocity))
-    @views lin_prob.b[1:N3] .= reinterpret(T, disc.velocity)
-    @views lin_prob.b[N3+1:end] .= zero(T)
-    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
+    @views cache.b[1:N3] .= reinterpret(T, disc.velocity)
+    @views cache.b[N3+1:end] .= zero(T)
+    prob.force_vals = solve!(cache).u
 end
 
 
@@ -314,9 +314,10 @@ end
 function solve_problem!(prob::ResistanceProblem)
     @unpack cache, disc, kernel, mu = prob
     gather!(prob)
-    assemble!(lin_prob.A, disc, kernel; μ=mu)
-    lin_prob.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
-    prob.force_vals = solve(lin_prob, MKLLUFactorization()).u
+    assemble!(cache.A, disc, kernel; μ=mu)
+    cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
+    cache.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
+    prob.force_vals = solve!(cache).u
 end
 
 # # Old ResistanceProblem — Flagellate/CellBody/Flagellum API (Matrix-based discretisation)
