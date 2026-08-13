@@ -35,11 +35,11 @@ mutable struct ImplicitGroovedEllipsoid{T <: Number} <: ImplicitBodyModel
     orientation::SMatrix{3,3,T}
 end
 
-mutable struct ImplicitGroovedEllipsoid{E <: ImplicitEllipsoid} <: ImplicitBodyModel
-    body::E
-    groove::E
-    groove_frame::Frame
-end
+# mutable struct ImplicitGroovedEllipsoid{E <: ImplicitEllipsoid} <: ImplicitBodyModel
+#     body::E
+#     groove::E
+#     groove_frame::Frame
+# end
 
 function ImplicitGroovedEllipsoid(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center; orientation=SMatrix{3,3,T}(I)) where {T <: Number}
     ImplicitGroovedEllipsoid{T}(a, b, c, g_a, g_b, g_c, SVector{3,T}(groove_center), SMatrix{3,3,T}(orientation))
