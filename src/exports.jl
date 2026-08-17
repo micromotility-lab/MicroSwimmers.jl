@@ -6,6 +6,8 @@ export is_inside_ellipsoid
 export spacing
 export unit_tangent, unit_tangent_and_dt
 
+export gather!, gather_part!
+
 # Core types
 export FluidBoundary, update_boundary!, move_boundary!
 export Frame
@@ -30,10 +32,11 @@ export Vane, PlanarVanedFlagellum, nearest_index, Nh
 
 # Kernels
 export RegStokeslet, regularised_stokeslet!, regularised_blakelet!
-export assemble!, assemble_swimming!
+export assemble!, assemble_swimming!, mul_swimming!
 
 # Problems
 export SwimmingProblem, ResistanceProblem, SwimmingTrajectoryProblem, ParticleTrajectoryProblem
+export SwimmingOperator, PreconditionerBox
 export solve_problem!
 export get_U, get_Ω, get_force_pts, get_forces
 export translate_problem!, rotate_problem!
