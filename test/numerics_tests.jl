@@ -111,4 +111,28 @@
         @test A[N3+4:N3+6, 1:N3] ≈ Ttest atol=1e-12
     end
 
+    @testset "mul_swimming! matches assemble_swimming!" begin
+        eps = 0.2
+        μ   = 1.3
+        kernel = RegStokeslet(eps)
+
+        force_pts = [SVector(0.0, 0.0, 0.0), SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0)]
+        quad_pts  = [SVector(0.05, 0.0, 0.0), SVector(0.9, 0.0, 0.0), SVector(0.0, 0.9, 0.1), SVector(0.4, 0.4, 0.0)]
+        nearest   = [1, 2, 3, 1]
+        x0 = SVector(0.2, 0.2, 0.0)
+        N  = length(force_pts)
+        N3 = 3N
+
+        A = zeros(N3 + 6, N3 + 6)
+        assemble_swimming!(A, x0, force_pts, quad_pts, nearest, kernel; μ=μ)
+
+        Random.seed!(11)
+        y = zeros(N3 + 6)
+        for _ in 1:5
+            x = randn(N3 + 6)
+            mul_swimming!(y, x, x0, force_pts, quad_pts, nearest, kernel; μ=μ)
+            @test y ≈ A * x atol=1e-10
+        end
+    end
+
 end

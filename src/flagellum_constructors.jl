@@ -45,11 +45,11 @@ function Flagellum(::Type{T},
     model,
     N, 
     Q; 
-    location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I)
+    location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T,9}(I)
 ) where {T <: Number}
     points = NearestDiscretisation(
-        T, N, Q; 
-        location=SVector{3,T}(location), orientation=SMatrix{3,3,T}(orientation)
+        T, N, Q;
+        location=SVector{3,T}(location), orientation=SMatrix{3,3,T,9}(orientation)
     )
     
     f = BareFlagellum(model, points)
@@ -186,13 +186,13 @@ end
 #     N_cs,
 #     Q,
 #     Q_cs; 
-#     location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I),
+#     location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T,9}(I),
 #     radius=T(0.1)
 # ) where {T <: Number}
 #     points = TubeFlagellumNearestDiscretisation(
 #         N, N_cs, Q, Q_cs; 
 #         location=SVector{3, T}(location), 
-#         orientation=SMatrix{3,3,T}(orientation),
+#         orientation=SMatrix{3,3,T,9}(orientation),
 #         radius=radius
 #     )
 #     f = BareFlagellum(model, points)

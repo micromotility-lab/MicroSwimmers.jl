@@ -8,7 +8,7 @@ end
 #     part = Part(
 #         model,
 #         disc,
-#         Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation)),
+#         Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64,9}(orientation)),
 #         acc
 #     )
 #     init_boundary!(part, )
@@ -18,7 +18,7 @@ function discretise(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float6
     part = Part(
         model, 
         make_discretisation(model, N, Q), 
-        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
+        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64,9}(orientation))
     )
     init_boundary!(part.model, part.disc)
     nearest_neighbour!(part.disc)
@@ -29,7 +29,7 @@ function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), o
     part = Part(
         model,
         make_discretisation(model, N, Q),
-        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64}(orientation))
+        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64,9}(orientation))
     )
     init_boundary!(part, N, Q)
     nearest_neighbour!(part.disc)

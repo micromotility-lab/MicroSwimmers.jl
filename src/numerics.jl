@@ -409,3 +409,82 @@ function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
         end
     end
 end
+
+###########################################################################################
+### Matrix-free swimming matvec ###########################################################
+###########################################################################################
+#
+# y = A*x for the same (3N+6)×(3N+6) system that assemble_swimming! builds, without ever
+# forming A. Used by the hybrid dense-LU/GMRES solver in problems.jl: once a dense
+# factorisation goes stale, GMRES needs a matvec (not a fresh assembly) on every iteration —
+# assembling the dense matrix on every iteration would cost the same as just refactorising it.
+
+@inline function accumulate_row_matvec!(y, row, xm, quad_pts, nearest, kernel, x, invfactor)
+    T   = eltype(y)
+    acc = zero(SVector{3,T})
+    for (q, yq) in enumerate(quad_pts)
+        S   = kernel(xm, yq)
+        col = 3*nearest[q] - 2
+        xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
+        acc = acc + S * xv
+    end
+    acc = acc * invfactor
+    @inbounds for a in 1:3
+        y[row+a-1] += acc[a]
+    end
+end
+
+mul_swimming!(y, x, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(y))) =
+    mul_swimming!(y, x, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
+
+mul_swimming!(y, x, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(y))) =
+    mul_swimming!(y, x, x0, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
+
+function mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
+                        force_pts, quad_pts, nearest, kernel; μ=one(eltype(y)))
+    T  = eltype(y)
+    Nf = length(force_pts)
+    N3 = 3Nf
+    fill!(y, zero(T))
+    invfactor = inv(8π*μ)
+
+    # BEM block: rows 1:N3, cols 1:N3
+    if threaded_assembly(kernel)
+        @batch for m in 1:Nf
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, kernel, x, invfactor)
+        end
+    else
+        for m in 1:Nf
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, kernel, x, invfactor)
+        end
+    end
+
+    # Rigid body columns' contribution to rows 1:N3: -I*U + K(xm - x0)*Ω
+    U = SVector{3,T}(x[N3+1], x[N3+2], x[N3+3])
+    Ω = SVector{3,T}(x[N3+4], x[N3+5], x[N3+6])
+    @inbounds for (m, xm) in enumerate(force_pts)
+        row = 3m - 2
+        K = skew_symmetric_static(xm - x0)
+        contrib = K * Ω - U
+        for p in 1:3
+            y[row+p-1] += contrib[p]
+        end
+    end
+
+    # Force-free / torque-free rows N3+1:N3+6
+    Facc = zero(SVector{3,T})
+    Tacc = zero(SVector{3,T})
+    @inbounds for (q, yq) in enumerate(quad_pts)
+        n   = nearest[q]
+        col = 3n - 2
+        xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
+        Facc = Facc + xv
+        Kq   = skew_symmetric_static(yq - x0)
+        Tacc = Tacc + Kq * xv
+    end
+    @inbounds for d in 1:3
+        y[N3+d]   += Facc[d]
+        y[N3+3+d] += Tacc[d]
+    end
+    y
+end

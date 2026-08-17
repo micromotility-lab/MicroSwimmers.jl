@@ -8,6 +8,7 @@ using StaticArrays
 # using Dierckx
 using DiffEqBase, OrdinaryDiffEq
 using LinearSolve
+using SciMLOperators
 using LsqFit
 using Statistics
 # using Meshing

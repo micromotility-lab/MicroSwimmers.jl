@@ -55,17 +55,17 @@ mutable struct EllipsoidalGroovedBody{T <: Number} <: CellBodyModel
     g_b::T
     g_c::T
     groove_center::Vector{T}
-    orientation::SMatrix{3,3,T}
+    orientation::SMatrix{3,3,T,9}
 end
 
-EllipsoidalGroovedBody(a::T, b::T, c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T}(I)) where {T <: Number} = EllipsoidalGroovedBody(
+EllipsoidalGroovedBody(a::T, b::T, c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T,9}(I)) where {T <: Number} = EllipsoidalGroovedBody(
     a, b, c,
     a, b, c,
     groove_center,
     orientation
 )
 
-EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T}(I)) where {T <: Number} = EllipsoidalGroovedBody(
+EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T,9}(I)) where {T <: Number} = EllipsoidalGroovedBody(
     a, b, c,
     g_a, g_b, g_c,
     groove_center,

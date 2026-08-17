@@ -13,6 +13,7 @@ using Aqua
     include("discretisations_tests.jl")
     include("problems_stokes_law_tests.jl")
     include("problems_invariants_tests.jl")
+    include("problems_hybrid_tests.jl")
     include("trajectories_tests.jl")
     include("regression_tests.jl")
     include("quality_tests.jl")
