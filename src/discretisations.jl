@@ -17,7 +17,7 @@ nq(disc::NystromDiscretisation) = length(disc.force_pts)
 #     N::Int                          # number of force points
 #     Q::Int                          # number of quadrature points
 #     location::SVector{3,T}          # current location
-#     orientation::SMatrix{3,3,T}     # current orientation
+#     orientation::SMatrix{3,3,T,9}   # current orientation
 #     force_pts::Matrix{T}            # reference configuration force points
 #     velocity::Matrix{T}             # reference configuration velocities (at the force points)
 #     quad_pts::Matrix{T}             # reference configuration quadrature points
@@ -42,7 +42,7 @@ nq(disc::NystromDiscretisation) = length(disc.force_pts)
     
 # function NearestDiscretisation(::Type{T}, 
 #     N::Int, Q::Int; 
-#     location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T}(I)
+#     location=SVector{3,T}(0, 0, 0), orientation=SMatrix{3,3,T,9}(I)
 #     ) where {T <: Number}
 #     NearestDiscretisation(
 #         N,

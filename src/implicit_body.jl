@@ -32,7 +32,7 @@ mutable struct ImplicitGroovedEllipsoid{T <: Number} <: ImplicitBodyModel
     g_b::T
     g_c::T
     groove_center::SVector{3,T}
-    orientation::SMatrix{3,3,T}
+    orientation::SMatrix{3,3,T,9}
 end
 
 # mutable struct ImplicitGroovedEllipsoid{E <: ImplicitEllipsoid} <: ImplicitBodyModel
@@ -41,8 +41,8 @@ end
 #     groove_frame::Frame
 # end
 
-function ImplicitGroovedEllipsoid(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center; orientation=SMatrix{3,3,T}(I)) where {T <: Number}
-    ImplicitGroovedEllipsoid{T}(a, b, c, g_a, g_b, g_c, SVector{3,T}(groove_center), SMatrix{3,3,T}(orientation))
+function ImplicitGroovedEllipsoid(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center; orientation=SMatrix{3,3,T,9}(I)) where {T <: Number}
+    ImplicitGroovedEllipsoid{T}(a, b, c, g_a, g_b, g_c, SVector{3,T}(groove_center), SMatrix{3,3,T,9}(orientation))
 end
 
 implicit(m::ImplicitGroovedEllipsoid, x::SVector{3,T}; k=50) where {T <: Number} = smooth_max(ellipsoid(x, m.a, m.b, m.c), -shifted_rotated_ellipsoid(x, m.g_a, m.g_b, m.g_c, m.groove_center, m.orientation), k)

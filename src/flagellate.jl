@@ -14,7 +14,7 @@ function Flagellate(
 ) where {F <: Flagellum}
     T = eltype(flagella[1].points.force_pts)
     location = SVector{3,T}(location)
-    orientation = SMatrix{3,3,T}(orientation)
+    orientation = SMatrix{3,3,T,9}(orientation)
 
     force_pt_indices = [body.points.N + 1]
     quad_pt_indices  = [body.points.Q + 1]
@@ -94,7 +94,7 @@ function Colony(members::Vector{F};
 ) where {F <: Flagellate}
     T = eltype(members[1].points.force_pts)
     location = SVector{3,T}(location)
-    orientation = SMatrix{3,3,T}(orientation)
+    orientation = SMatrix{3,3,T,9}(orientation)
 
     # Build index offsets exactly as Flagellate does for its flagella
     member_force_indices = [1]

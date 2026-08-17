@@ -1,10 +1,10 @@
     struct Frame{T}
         location::SVector{3,T}
-        orientation::SMatrix{3,3,T}
+        orientation::SMatrix{3,3,T,9}
     end
 
-    Frame{T}() where {T} = Frame(zero(SVector{3,T}), SMatrix{3,3,T}(I))
-    Frame(l, o) = Frame(SVector{3,eltype(l)}(l), SMatrix{3,3,eltype(o)}(o))
+    Frame{T}() where {T} = Frame(zero(SVector{3,T}), SMatrix{3,3,T,9}(I))
+    Frame(l, o) = Frame(SVector{3,eltype(l)}(l), SMatrix{3,3,eltype(o),9}(o))
 
     # SE(3) composition: (parent ∘ child) gives child's pose in world
     @inline Base.:*(P::Frame, C::Frame) =

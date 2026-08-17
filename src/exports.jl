@@ -7,6 +7,7 @@ export spacing
 export unit_tangent, unit_tangent_and_dt
 
 export gather!, gather_part!
+export dense_solve!, assemble_swimming!
 
 # Core types
 export FluidBoundary, update_boundary!, move_boundary!

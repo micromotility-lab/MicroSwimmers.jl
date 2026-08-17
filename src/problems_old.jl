@@ -174,13 +174,13 @@ function update_boundary!(prob::SwimmingProblem, t::Number)
     gather!(prob)
 end
 
-function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T}, t::Number) where T
+function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, B::SMatrix{3,3,T,9}, t::Number) where T
     prob.microswimmer.frame = Frame(x0, B)
     update_boundary!(prob, T(t))
 end
 
 function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3,T}, t::Number) where T
-    move_boundary!(prob, x0, SMatrix{3,3,T}(hcat(b1, b2, cross(b1, b2))), t)
+    move_boundary!(prob, x0, SMatrix{3,3,T,9}(hcat(b1, b2, cross(b1, b2))), t)
 end
 
 function solve_problem!(prob::SwimmingProblem)

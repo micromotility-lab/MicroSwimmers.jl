@@ -48,11 +48,11 @@ function translate_problem!(prob::InstantaneousProblem, x0::AbstractVector{T}) w
 end
 
 function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix{T}) where {T <: Number}
-    prob.disc.force_pts .= Ref(SMatrix{3,3,T}(B)) .* prob.disc.force_pts
-    prob.disc.velocity  .= Ref(SMatrix{3,3,T}(B)) .* prob.disc.velocity
-    prob.disc.quad_pts  .= Ref(SMatrix{3,3,T}(B)) .* prob.disc.quad_pts
+    prob.disc.force_pts .= Ref(SMatrix{3,3,T,9}(B)) .* prob.disc.force_pts
+    prob.disc.velocity  .= Ref(SMatrix{3,3,T,9}(B)) .* prob.disc.velocity
+    prob.disc.quad_pts  .= Ref(SMatrix{3,3,T,9}(B)) .* prob.disc.quad_pts
     fr = prob.microswimmer.frame
-    prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T}(B) * fr.orientation)
+    prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T,9}(B) * fr.orientation)
 end
 
 function gather_nearest!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
@@ -232,7 +232,7 @@ end
 function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}};
     mu=1.0, eps=0.1, alg=LUFactorization(),
     hybrid=false, refactor_interval=20, max_refactor_interval=100,
-    gmres_reltol=1e-10, gmres_maxiters=50
+    gmres_reltol=1e-7, gmres_maxiters=5
 )
     nf_sizes = [nf(p.disc) for p in ms.parts]
     N        = sum(nf_sizes)
@@ -241,8 +241,10 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisatio
 
     gmres_cache, pl_box = hybrid ?
         make_hybrid_cache(ms, disc, kernel, mu, N; gmres_reltol=gmres_reltol, gmres_maxiters=gmres_maxiters) :
-        (nothing, nothing)
+        (; factors=Matrix{Float64}(undef, n, n), ipiv=iVector{Int}(undef, n))
 
+
+    pl_box.lu      = LU(pl_box.factors, pl_box.ipiv, 0)
     prob = SwimmingProblem(
         ms,
         disc,
@@ -326,12 +328,12 @@ function update_boundary!(prob::SwimmingProblem, t::Number)
 end
 
 function move_boundary!(prob::SwimmingProblem, x0::AbstractVector, B::AbstractMatrix, t::T) where {T <: Number} 
-    prob.microswimmer.frame = Frame(SVector{3,T}(x0), SMatrix{3,3,T}(B))
+    prob.microswimmer.frame = Frame(SVector{3,T}(x0), SMatrix{3,3,T,9}(B))
     update_boundary!(prob, T(t))
 end
 
 function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T}, b2::SVector{3,T}, t::Number) where T
-    move_boundary!(prob, x0, SMatrix{3,3,T}(hcat(b1, b2, cross(b1, b2))), t)
+    move_boundary!(prob, x0, SMatrix{3,3,T,9}(hcat(b1, b2, cross(b1, b2))), t)
 end
 
 function fill_swimming_rhs!(b, disc)
@@ -342,18 +344,18 @@ function fill_swimming_rhs!(b, disc)
 end
 
 function dense_solve!(prob::SwimmingProblem)
-    @unpack cache, disc, kernel, mu, microswimmer = prob
+    @unpack cache, disc, kernel, mu, microswimmer, pl_box = prob
     assemble_swimming!(cache.A, microswimmer.frame.location, disc, kernel; μ=mu)
     cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
     fill_swimming_rhs!(cache.b, disc)
     prob.force_vals = solve!(cache).u
-
     if prob.hybrid
-        # Stash this factorisation as the GMRES preconditioner for the steps that follow,
-        # until it goes stale (see try_gmres_solve!) or refactor_interval is hit again.
-        prob.pl_box.lu = cache.cacheval
+        copyto!(pl_box.lu.factors, cache.cacheval.factors)
+        copyto!(pl_box.lu.ipiv,    cache.cacheval.ipiv)
+        pl_box.lu = LU(pl_box.lu.factors, pl_box.lu.ipiv, cache.cacheval.info)
         prob.steps_since_refactor = 0
     end
+
     prob
 end
 
@@ -591,10 +593,11 @@ end
 function solve_problem!(prob::SwimmingTrajectoryProblem; method=VCABM(), periodic=false)
     sol = solve(prob.ode_prob, method)
     u   = sol.u
-    x   = [SVector{3}(u[i][1:3]) for i in eachindex(u)]
-    b1  = [SVector{3}(u[i][4:6]) for i in eachindex(u)]
-    b2  = [SVector{3}(u[i][7:9]) for i in eachindex(u)]
-    prob.traj = Trajectory(sol.t, x, b1, b2, periodic)
+    T = eltype(eltype(u))
+    x   = [SVector{3,T}(u[i][1:3]) for i in eachindex(u)]
+    b1  = [SVector{3,T}(u[i][4:6]) for i in eachindex(u)]
+    b2  = [SVector{3,T}(u[i][7:9]) for i in eachindex(u)]
+    prob.traj = Trajectory{T}(sol.t, x, b1, b2, periodic)
 end
 
 function get_sol!(prob::SwimmingTrajectoryProblem)
