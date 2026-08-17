@@ -574,9 +574,9 @@ function SwimmingTrajectoryProblem(
     # X0   = SVector{9,T}(x0..., B[:,1]..., B[:,2]...)
 
     function rhs(X, p, t)
-        x0 = SVector{3,T}(X[1:3])
-        b1 = SVector{3,T}(X[4:6])
-        b2 = SVector{3,T}(X[7:9])
+        x0 = SVector(X[1],X[2],X[3])
+        b1 = SVector(X[4],X[5],X[6])
+        b2 = SVector(X[7],X[8],X[9])
         move_boundary!(sprob, x0, b1, b2, t)
         solve_problem!(sprob)
         Ω = get_Ω(sprob)
