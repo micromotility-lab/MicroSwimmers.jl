@@ -72,24 +72,38 @@ EllipsoidalGroovedBody(a::T, b::T, c::T, g_a::T, g_b::T, g_c::T, groove_center::
     orientation
 )
 
-function (m::EllipsoidalGroovedBody)(N::Int; tol=1e-8, pts_fn=fibonacci_ellipsoid)  # N is the number of points per ellipse, roughly the total
-    ell1 = fibonacci_ellipsoid(m.a, m.b, m.c, N)
-    ell2 = m.groove_center .+ m.orientation*pts_fn(m.g_a, m.g_b, m.g_c, N)
+function (m::EllipsoidalGroovedBody{T})(N::Int; tol=1e-8, pts_fn=fibonacci_ellipsoid) where {T <: Number}  # N is the number of points per ellipse, roughly the total
+    centre = SVector{3,T}(m.groove_center)
+    axis   = m.orientation * SVector{3,T}(ez)          # groove axis: points out of the mouth
+    body_radii   = SVector{3,T}(m.a, m.b, m.c)
+    groove_radii = SVector{3,T}(m.g_a, m.g_b, m.g_c)
 
-    N = m.orientation * ez
+    ell1 = pts_fn(m.a, m.b, m.c, N)
+    ell2 = [centre + m.orientation * p for p in pts_fn(m.g_a, m.g_b, m.g_c, N)]
 
-    body = reduce(
-        hcat, 
-        filter(x -> !is_inside_ellipsoid(x, m.groove_center, [m.g_a; m.g_b; m.g_c], orientation=m.orientation) && dot(N, x - m.groove_center) < tol, eachcol(ell1))
+    body = filter(
+        x -> !is_inside_ellipsoid(x, centre, groove_radii, orientation=m.orientation) &&
+             dot(axis, x - centre) < tol,
+        ell1
     )
 
-    groove = reduce(
-        hcat, 
-        filter(x -> is_inside_ellipsoid(x, zeros(3), [m.a; m.b; m.c]) && dot(N, x - m.groove_center) < tol, eachcol(ell2)), 
-        init=zeros(3,0)
+    groove = filter(
+        x -> is_inside_ellipsoid(x, zero(SVector{3,T}), body_radii) &&
+             dot(axis, x - centre) < tol,
+        ell2
     )
 
     [body, groove]
+end
+
+# The groove filter discards points, so the cloud size is only known once the surface has
+# been sampled — size the discretisation from the clouds rather than from N and Q.
+function (m::EllipsoidalGroovedBody)(disc::NearestDiscretisation, N::Int, Q::Int; kwargs...)
+    T = eltype(eltype(disc.force_pts))
+    disc.force_pts = reduce(vcat, m(N; kwargs...))
+    disc.quad_pts  = reduce(vcat, m(Q; kwargs...))
+    disc.velocity  = [zero(SVector{3,T}) for _ in 1:length(disc.force_pts)]
+    disc
 end
 
 

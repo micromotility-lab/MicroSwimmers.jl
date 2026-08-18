@@ -40,10 +40,14 @@ function add_rigid_body_motion!(part::Part, U, Ω)
     part.disc.velocity .= Ref(SVector{3}(U)) .+ cross.(Ref(SVector{3}(Ω)), part.disc.force_pts)
 end
 
+# models whose surface is sampled then filtered (raymarched, or carved by a groove): the
+# requested N, Q are only sampling budgets, so the final cloud size is not known upfront
+const SampledBodyModel = Union{ImplicitBodyModel, EllipsoidalGroovedBody}
+
 # fixed-cloud models: N,Q are final point counts → size the arrays
 make_discretisation(::Model, N, Q)             = NearestDiscretisation(N, Q)
-# raymarched models: N is number of rays, cloud size unknown → start empty
-make_discretisation(::ImplicitBodyModel, N, Q) = NearestDiscretisation()
+# sampled models: cloud size unknown → start empty and size it from the sampled cloud
+make_discretisation(::SampledBodyModel, N, Q)  = NearestDiscretisation()
 function make_discretisation(m::PlanarVanedFlagellum, N, Q)
     N_v = vane_npoints(m.vane, N, m.flagellum.L, false)
     Q_v = vane_npoints(m.vane, Q, m.flagellum.L, true)
@@ -53,16 +57,18 @@ end
 
 init_boundary!(part::Part)       = init_boundary!(part.model, part.disc)
 init_boundary!(part::Part, N, Q) = init_boundary!(part.model, part.disc)
-init_boundary!(part::Part{<:ImplicitBodyModel}, N, Q) =  init_boundary!(part.model, part.disc, N, Q)
+init_boundary!(part::Part{<:SampledBodyModel}, N, Q) =  init_boundary!(part.model, part.disc, N, Q)
         
 init_boundary!(m::FlagellumModel, disc)     = m(disc, 0.0)     
 init_boundary!(m::CellBodyModel, disc)      = m(disc)         
 # init_boundary!(m::PlanarVanedFlagellum, disc) = nothing
 
 
-function init_boundary!(m::ImplicitBodyModel, disc, N, Q)
-    m(disc, N, Q)       
-    disc.nearest = zeros(Int, length(disc.quad_pts))
+function init_boundary!(m::SampledBodyModel, disc, N, Q)
+    m(disc, N, Q)
+    disc.nearest            = zeros(Int, length(disc.quad_pts))
+    disc.force_part_ranges  = [1:length(disc.force_pts)]
+    disc.quad_part_ranges   = [1:length(disc.quad_pts)]
 end
 
 update_boundary!(part::Part, t::T) where {T <: Number} = update_boundary!(part.model, part.disc, t)

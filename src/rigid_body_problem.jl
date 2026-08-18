@@ -31,6 +31,7 @@ function body_shape_oscillation(ms::MicroSwimmer; period=1.0, num_ts=30, eps = 0
     end
     Breths
 end
+
 # function to ensure that the body frame is fixed in body so resistance matrix is constant and can be used to compute the body shape tensor
 function body_fixed(ms::MicroSwimmer)
     parts = [Part(p.model, p.disc, p.frame) for p in ms.parts]
