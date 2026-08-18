@@ -44,5 +44,6 @@ include("problems.jl")
 include("forces_and_torques.jl")
 include("fluid.jl")
 include("exports.jl")
+include("rigid_body_problem.jl")
 
 end # module

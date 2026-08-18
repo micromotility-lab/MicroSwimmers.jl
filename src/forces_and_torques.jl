@@ -72,3 +72,43 @@ function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
     # Trapezoidal integration
     sum(0.5 * (Es[i] + Es[i+1]) * (traj.t[i+1] - traj.t[i]) for i in 1:length(traj.t)-1)
 end
+
+
+function shear_tensor(forces, disc::NearestDiscretisation)
+    @unpack quad_pts, nearest = disc
+    sum((forces[nearest[i]]*quad_pts[i]') for i in eachindex(quad_pts))
+end
+
+function shear_tensor(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
+    @unpack quad_pts, nearest = disc
+    sum((forces[i]*disc.force_pts[i]') for i in eachindex(disc.force_pts))
+end
+
+_stresslet_from_shear(S) = 0.5 * (S + S') - (1/3)*tr(S)*I
+
+function stresslet_from_shear(prob::InstantaneousProblem)
+    check_solved!(prob)
+    forces = get_forces(prob)
+    M = shear_tensor(forces, prob.disc)
+    _stresslet_from_shear(M)
+end
+
+function force_and_torque_shear(ms::MicroSwimmer; eps=0.1)
+    Gamma = zeros(6,3,3)
+    for (i, n) in enumerate([ex, ey, ez]) 
+        prob = ResistanceProblem(ms, eps=eps)
+        [add_rigid_body_motion!(part, n,zero(SVector{3,Float64})) for part in prob.microswimmer.parts]
+        solve_problem!(prob)
+        f = get_forces(prob)
+        M= shear_tensor(f, prob.disc)
+        Gamma[i,:,:] = 0.5 * (M + M')- (1/3)*tr(M)*I 
+    
+        [add_rigid_body_motion!(part, zero(SVector{3,Float64}), n) for part in prob.microswimmer.parts]
+        solve_problem!(prob)
+        f = get_forces(prob)
+        M= shear_tensor(f, prob.disc)
+        Gamma[3+i,:,:] = 0.5 * (M + M')- (1/3)*tr(M)*I 
+        #symmetry and traceless of the rate of strain means that we can make shear tensor symmetric and traceless too
+    end
+    Gamma
+end
