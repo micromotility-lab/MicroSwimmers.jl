@@ -50,11 +50,20 @@ function average_stresslet_tensor(prob::InstantaneousProblem; period=1.0, num_ts
     sum(Ss) / num_ts
 end
 
+# function total_power(prob::InstantaneousProblem)
+#     check_solved!(prob)
+#     forces = get_forces(prob)
+#     vels   = prob.disc.velocity
+#     sum(dot(forces[n], vels[n]) for n in eachindex(forces))
+# end
+
+
 function total_power(prob::InstantaneousProblem)
-    check_solved!(prob)
+     @unpack quad_pts, nearest = prob. disc
+    check_solved!(prob) 
     forces = get_forces(prob)
-    vels   = prob.disc.velocity
-    sum(dot(forces[n], vels[n]) for n in eachindex(forces))
+    vels = prob.disc.velocity
+    sum(dot(forces[n], vels[n]) for n in nearest)
 end
 
 function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
