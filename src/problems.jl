@@ -79,6 +79,30 @@ function gather_part!(disc, ms_frame::Frame, p::Part, i)
     @views disc.force_pts[f_rng] .= lab_frame.(p.disc.force_pts)
     @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* p.disc.velocity
     @views disc.quad_pts[q_rng]  .= lab_frame.(p.disc.quad_pts)
+    gather_part_weights!(disc, p, q_rng)
+end
+
+# A Frame is a rigid motion, so it preserves area: weights copy across untransformed. Parts
+# with no weights of their own contribute w == 1, which is exactly the absorbed convention,
+# so a weighted and an unweighted part can share one linear system. Re-copying on every
+# gather (an O(Q) memcpy against an O(N*Q) assembly) keeps the part's own weights
+# authoritative for models that update them.
+function gather_part_weights!(disc::NearestDiscretisation, p::Part, q_rng)
+    isnothing(disc.quad_wts) && return nothing
+    if isnothing(p.disc.quad_wts)
+        @views disc.quad_wts[q_rng] .= one(eltype(disc.quad_wts))
+    else
+        @views disc.quad_wts[q_rng] .= p.disc.quad_wts
+    end
+    nothing
+end
+
+# Give the global discretisation a weight vector only if at least one part supplies weights;
+# otherwise leave it `nothing` so the whole solve takes the absorbed (zero-cost) path.
+function init_quad_weights!(disc::NearestDiscretisation, ms::MicroSwimmer)
+    any(p -> is_weighted(p.disc), ms.parts) || return disc
+    disc.quad_wts = ones(eltype(eltype(disc.quad_pts)), nq(disc))
+    disc
 end
 
 # function gather!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
@@ -203,6 +227,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
     disc = NearestDiscretisation(nf_sizes, nq_sizes)
+    init_quad_weights!(disc, ms)
     kernel = wall ? RegBlakelet(eps) : RegStokeslet(eps)
 
     gmres_cache, pl_box = hybrid ?
@@ -426,9 +451,11 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisat
     nf_sizes = [nf(p.disc) for p in ms.parts]
     nq_sizes = [nq(p.disc) for p in ms.parts]
     N = sum(nf_sizes); Q = sum(nq_sizes)
+    disc = NearestDiscretisation(nf_sizes, nq_sizes)
+    init_quad_weights!(disc, ms)
     prob = ResistanceProblem(
         ms,
-        NearestDiscretisation(nf_sizes, nq_sizes),
+        disc,
         Float64(mu),
         init(LinearProblem(zeros(3N, 3N), zeros(3N)), alg),
         nothing,
@@ -667,7 +694,8 @@ function ParticleTrajectoryProblem(
         for i in 1:num_particles
             x_sv = SVector{3}(X[3i-2], X[3i-1], X[3i])
             Ai   = @view A[3i-2:3i, :]
-            assemble!(Ai, [x_sv], rprob.disc.quad_pts, rprob.disc.nearest, rprob.kernel; μ=rprob.mu)
+            assemble!(Ai, [x_sv], rprob.disc.quad_pts, rprob.disc.nearest,
+                      rprob.disc.quad_wts, rprob.kernel; μ=rprob.mu)
         end
         dX .= A * rprob.force_vals
     end

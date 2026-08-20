@@ -335,15 +335,23 @@ end
 #     swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; μ=μ, wall=wall)
 # end
 
+# Quadrature weight for point q. `nothing` means the weights are absorbed into the force
+# unknowns (the default): `true` promotes to a literal 1.0, which LLVM folds out of the
+# inner loops, so the absorbed path costs exactly what it did before weights existed.
+@inline quad_weight(::Nothing, ::Int)          = true
+@inline quad_weight(w::AbstractVector, q::Int) = @inbounds w[q]
+
 assemble!(A, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
+    assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
 
+# NystromDiscretisation collocates force and quadrature points, so there are no separate
+# quadrature weights to apply -- it always takes the absorbed path.
 assemble!(A, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble!(A, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
+    assemble!(A, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
 
-@inline function accumulate_row!(A, row, xm, quad_pts, nearest, kernel)
+@inline function accumulate_row!(A, row, xm, quad_pts, nearest, wts, kernel)
     for (q, yq) in enumerate(quad_pts)
-        S   = kernel(xm, yq)
+        S   = kernel(xm, yq) * quad_weight(wts, q)
         col = 3*nearest[q] - 2
         @inbounds for b in 1:3, a in 1:3
             A[row+a-1, col+b-1] += S[a,b]
@@ -351,38 +359,46 @@ assemble!(A, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
     end
 end
 
-function assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
+# no `wts` argument => quadrature weights absorbed into the force unknowns
+assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A))) =
+    assemble!(A, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
+
+function assemble!(A, force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(A)))
     fill!(A, zero(eltype(A)))
     Nf = length(force_pts)
     # m (force points) is the outer loop: each m owns a disjoint row block of
     # A, so threads never race on the same A[row,col] accumulator when threaded.
     if threaded_assembly(kernel)
         @batch for m in 1:Nf
-            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, kernel)
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel)
         end
     else
         for m in 1:Nf
-            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, kernel)
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel)
         end
     end
     A .*= inv(8π*μ)
 end
 
 assemble_swimming!(A, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
+    assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
 
 assemble_swimming!(A, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble_swimming!(A, x0, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
+    assemble_swimming!(A, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
+
+assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
+                   force_pts, quad_pts, nearest, kernel; μ=one(eltype(A))) =
+    assemble_swimming!(A, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
 
 function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
-                             force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)))
+                             force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(A)))
     T  = eltype(A)
     N  = length(force_pts)
     N3 = 3N
     fill!(A, zero(T))
 
     # BEM block: A[3m-2:3m, 3nearest[q]-2:3nearest[q]] += kernel(xm, yq)
-    assemble!(view(A, 1:N3, 1:N3), force_pts, quad_pts, nearest, kernel; μ=μ)
+    assemble!(view(A, 1:N3, 1:N3), force_pts, quad_pts, nearest, wts, kernel; μ=μ)
 
     # Rigid body columns: U (cols N3+1:N3+3) and Ω (cols N3+4:N3+6)
     @inbounds for (m, xm) in enumerate(force_pts)
@@ -397,15 +413,19 @@ function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
     end
 
     # Force-free / torque-free rows (rows N3+1:N3+6)
+    # These rows must carry the same quadrature weight as the BEM block above. The net
+    # force is Σ_q w_q f_{nearest[q]}, so weighting one and not the other would make
+    # "force-free" mean something different from what total_force reports.
     @inbounds for (q, yq) in enumerate(quad_pts)
         n = nearest[q]
+        w = quad_weight(wts, q)
         for d in 1:3
-            A[N3+d, 3n-3+d] += one(T)
+            A[N3+d, 3n-3+d] += w
         end
         rq = yq - x0
         Kq = skew_symmetric_static(rq)
         for p in 1:3, r in 1:3
-            A[N3+3+p, 3*(n-1)+r] += Kq[p,r]
+            A[N3+3+p, 3*(n-1)+r] += w * Kq[p,r]
         end
     end
 end
@@ -419,11 +439,11 @@ end
 # factorisation goes stale, GMRES needs a matvec (not a fresh assembly) on every iteration —
 # assembling the dense matrix on every iteration would cost the same as just refactorising it.
 
-@inline function accumulate_row_matvec!(y, row, xm, quad_pts, nearest, kernel, x, invfactor)
+@inline function accumulate_row_matvec!(y, row, xm, quad_pts, nearest, wts, kernel, x, invfactor)
     T   = eltype(y)
     acc = zero(SVector{3,T})
     for (q, yq) in enumerate(quad_pts)
-        S   = kernel(xm, yq)
+        S   = kernel(xm, yq) * quad_weight(wts, q)
         col = 3*nearest[q] - 2
         xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
         acc = acc + S * xv
@@ -435,13 +455,17 @@ end
 end
 
 mul_swimming!(y, x, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(y))) =
-    mul_swimming!(y, x, x0, disc.force_pts, disc.quad_pts, disc.nearest, kernel; μ=μ)
+    mul_swimming!(y, x, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
 
 mul_swimming!(y, x, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(y))) =
-    mul_swimming!(y, x, x0, disc.force_pts, disc.force_pts, 1:nf(disc), kernel; μ=μ)
+    mul_swimming!(y, x, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
+
+mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
+              force_pts, quad_pts, nearest, kernel; μ=one(eltype(y))) =
+    mul_swimming!(y, x, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
 
 function mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
-                        force_pts, quad_pts, nearest, kernel; μ=one(eltype(y)))
+                        force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(y)))
     T  = eltype(y)
     Nf = length(force_pts)
     N3 = 3Nf
@@ -451,11 +475,11 @@ function mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
     # BEM block: rows 1:N3, cols 1:N3
     if threaded_assembly(kernel)
         @batch for m in 1:Nf
-            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, kernel, x, invfactor)
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel, x, invfactor)
         end
     else
         for m in 1:Nf
-            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, kernel, x, invfactor)
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel, x, invfactor)
         end
     end
 
@@ -477,10 +501,11 @@ function mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
     @inbounds for (q, yq) in enumerate(quad_pts)
         n   = nearest[q]
         col = 3n - 2
+        w   = quad_weight(wts, q)
         xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
-        Facc = Facc + xv
+        Facc = Facc + w * xv
         Kq   = skew_symmetric_static(yq - x0)
-        Tacc = Tacc + Kq * xv
+        Tacc = Tacc + w * (Kq * xv)
     end
     @inbounds for d in 1:3
         y[N3+d]   += Facc[d]

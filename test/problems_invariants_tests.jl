@@ -47,4 +47,27 @@
         @test MicroSwimmers.total_power(prob) > 0
     end
 
+    @testset "total_power equals F·U for a rigidly translating body" begin
+        # A rigidly translating body has u = U at every node, so the rate of working is
+        #   P = Σ_q ⟨f_{nearest[q]}, U⟩ = ⟨Σ_q f_{nearest[q]}, U⟩ = ⟨total_force, U⟩
+        # exactly — the same quadrature-point sum that total_force uses. Summing over
+        # force points instead drops the patch multiplicity and breaks this by ~Q/N,
+        # which is how the pre-7b3326f version of total_power went unnoticed.
+        a    = 1.0
+        body = Part(EllipsoidBody(a, a, a), 40, 170)
+        ms   = MicroSwimmer([body])
+        prob = ResistanceProblem(ms; eps=0.05)
+        U    = SVector(0.3, -0.2, 0.5)
+        add_rigid_body_motion!(body, U, zero(SVector{3,Float64}))
+        solve_problem!(prob)
+
+        F, _ = total_force_and_torque(prob)
+        @test total_power(prob) ≈ dot(F, U) rtol=1e-10
+
+        # the identity is sharp: the force-point sum differs by the patch multiplicity,
+        # so this test genuinely discriminates between the two conventions
+        forces = get_forces(prob)
+        @test !isapprox(sum(dot(f, U) for f in forces), dot(F, U); rtol=0.5)
+    end
+
 end

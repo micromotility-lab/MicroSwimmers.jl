@@ -3,6 +3,7 @@
 struct FluidVelocity{T <: Number, K <: Kernel}
     quad_pts::Vector{SVector{3,T}}
     nearest::Vector{Int}
+    quad_wts::Union{Nothing, Vector{T}}
     kernel::K
     mu::T
     force_vals::Vector{T}   # 3N force components (excluding U/Ω for SwimmingProblem)
@@ -15,6 +16,11 @@ _fluid_quad_pts(disc::NystromDiscretisation) = disc.force_pts
 _fluid_nearest(disc::NearestDiscretisation) = disc.nearest
 _fluid_nearest(disc::NystromDiscretisation) = collect(1:nf(disc))
 
+# The field must use the same quadrature rule as the solve that produced force_vals, or the
+# plotted flow silently disagrees with the solution it came from.
+_fluid_quad_wts(disc::NearestDiscretisation) = disc.quad_wts
+_fluid_quad_wts(::NystromDiscretisation)     = nothing
+
 function FluidVelocity(prob::InstantaneousProblem)
     check_solved!(prob)
     N  = nf(prob.disc)
@@ -22,6 +28,7 @@ function FluidVelocity(prob::InstantaneousProblem)
     FluidVelocity(
         _fluid_quad_pts(prob.disc),
         _fluid_nearest(prob.disc),
+        _fluid_quad_wts(prob.disc),
         prob.kernel,
         prob.mu,
         fv,
@@ -30,7 +37,7 @@ function FluidVelocity(prob::InstantaneousProblem)
 end
 
 function (fv::FluidVelocity)(x)
-    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.kernel; μ=fv.mu)
+    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.quad_wts, fv.kernel; μ=fv.mu)
     SVector{3}(fv.A * fv.force_vals)
 end
 

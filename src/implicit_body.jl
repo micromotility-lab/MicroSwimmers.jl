@@ -1,9 +1,26 @@
 abstract type ImplicitBodyModel <: CellBodyModel end
 
-function (m::ImplicitBodyModel)(disc::NearestDiscretisation, N, Q)
+# Can this model supply surface quadrature weights? Ray-marching produces them as a
+# by-product of the surface hit (see raymarch_cloud!); the Fibonacci-sampled models do not
+# know their own area elements, so they can only use the absorbed convention.
+supports_quadrature_weights(::Model)             = false
+supports_quadrature_weights(::ImplicitBodyModel) = true
+
+# Hook for refreshing quadrature weights after the geometry moves. A rigid Frame preserves
+# area, so a rigid body never needs this; it exists so a deforming weighted model can opt in.
+# Only called for parts that actually carry weights.
+quadrature_weights!(::Model, ::Discretisation) = nothing
+
+function (m::ImplicitBodyModel)(disc::NearestDiscretisation, N, Q; weighted=false)
       T = eltype(eltype(disc.force_pts))
-      raymarch_cloud!(disc.force_pts, x -> implicit(m, x), bounding_radius(m), N; seed=seed(m))
-      raymarch_cloud!(disc.quad_pts,  x -> implicit(m, x), bounding_radius(m), Q; seed=seed(m))
+      f = x -> implicit(m, x)
+      R = bounding_radius(m)
+      # Weights belong to the quadrature cloud only: the force points carry unknowns, not
+      # area, so their ray-march weights are discarded.
+      raymarch_cloud!(disc.force_pts, f, R, N; seed=seed(m))
+      wts = T[]
+      raymarch_cloud!(disc.quad_pts, wts, f, R, Q; seed=seed(m))
+      disc.quad_wts = weighted ? wts : nothing
       disc.velocity = [zero(SVector{3,T}) for _ in 1:length(disc.force_pts)]
 end
 

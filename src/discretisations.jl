@@ -113,9 +113,18 @@ mutable struct NearestDiscretisation{T <: Number} <: Discretisation
     velocity::Vector{SVector{3,T}}
     quad_pts::Vector{SVector{3,T}}
     nearest::Vector{Int}
+    # Quadrature weights, one per quadrature point, or `nothing` when the weights are
+    # absorbed into the force unknowns (the default). Absorbing them is exact when the
+    # quadrature points are near-uniformly spaced, which is what the Fibonacci and
+    # arclength samplers produce; ray-marched clouds need the explicit weights.
+    quad_wts::Union{Nothing, Vector{T}}
     force_part_ranges::Vector{UnitRange{Int}}
     quad_part_ranges::Vector{UnitRange{Int}}
 end
+
+# does this discretisation carry explicit quadrature weights, or absorb them?
+is_weighted(disc::NearestDiscretisation) = !isnothing(disc.quad_wts)
+is_weighted(::Discretisation)            = false
 
 function ranges_from_sizes(sizes)
     ranges = Vector{UnitRange{Int}}(undef, length(sizes))
@@ -138,6 +147,7 @@ function NearestDiscretisation(nf_sizes::AbstractVector{<:Integer},
         Vector{SVector{3,Float64}}(undef, N),
         Vector{SVector{3,Float64}}(undef, Q),
         zeros(Int, Q),
+        nothing,
         ranges_from_sizes(nf_sizes),
         ranges_from_sizes(nq_sizes),
     )
@@ -151,6 +161,7 @@ NearestDiscretisation() = NearestDiscretisation(
     SVector{3,Float64}[],
     SVector{3,Float64}[],
     Int[],
+    nothing,
     UnitRange{Int}[],
     UnitRange{Int}[],
 )
@@ -181,6 +192,15 @@ nf(disc::NearestDiscretisation, i::Int) = length(disc.force_part_ranges[i])  # p
 nq(disc::NearestDiscretisation) = length(disc.quad_pts)
 nq(disc::NearestDiscretisation, i::Int) = length(disc.quad_part_ranges[i])  # per-part
     
+
+# Sum of the quadrature weights. For a correctly weighted body this is the surface area,
+# which is the cheapest available check that the weights are right. An unweighted
+# discretisation has unit weights, so this counts the quadrature points.
+total_quad_weight(disc::NearestDiscretisation) =
+    isnothing(disc.quad_wts) ? float(nq(disc)) : sum(disc.quad_wts)
+
+total_quad_weight(disc::NearestDiscretisation, i::Int) =
+    isnothing(disc.quad_wts) ? float(nq(disc, i)) : sum(@view disc.quad_wts[disc.quad_part_ranges[i]])
 
 # spacing between force points
 function hf(disc::NearestDiscretisation)

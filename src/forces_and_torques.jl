@@ -1,12 +1,17 @@
-total_force(forces, disc::NearestDiscretisation) = sum(forces[n] for n in disc.nearest)
+# Every aggregator below sums over quadrature points, matching the force-free/torque-free
+# rows that assemble_swimming! builds. quad_weight(nothing, q) is 1, so the unweighted case
+# reduces exactly to the plain patch-multiplicity sums these were before weights existed.
+total_force(forces, disc::NearestDiscretisation) =
+    sum(quad_weight(disc.quad_wts, q) * forces[disc.nearest[q]] for q in eachindex(disc.nearest))
 
 function total_torque(forces, disc::NearestDiscretisation)
-    @unpack quad_pts, nearest = disc
-    sum(cross(quad_pts[i], forces[nearest[i]]) for i in eachindex(quad_pts))
+    @unpack quad_pts, nearest, quad_wts = disc
+    sum(quad_weight(quad_wts, q) * cross(quad_pts[q], forces[nearest[q]]) for q in eachindex(quad_pts))
 end
 
+total_force(forces, ::NystromDiscretisation) = sum(forces)
+
 function total_torque(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
-    @unpack quad_pts, nearest = disc
     sum(cross(disc.force_pts[i], forces[i]) for i in eachindex(disc.force_pts))
 end
 
@@ -24,9 +29,11 @@ function stresslet_tensor(prob::InstantaneousProblem)
 end
 
 function _stresslet_tensor(forces, disc::NearestDiscretisation)
+    @unpack quad_pts, nearest, quad_wts = disc
     S_raw = 0.5 * sum(
-        forces[disc.nearest[i]] * disc.quad_pts[i]' + disc.quad_pts[i] * forces[disc.nearest[i]]'
-        for i in eachindex(disc.quad_pts)
+        quad_weight(quad_wts, q) *
+            (forces[nearest[q]] * quad_pts[q]' + quad_pts[q] * forces[nearest[q]]')
+        for q in eachindex(quad_pts)
     )
     S_raw - (1/3)*tr(S_raw)*I
 end
@@ -59,12 +66,22 @@ end
 
 
 function total_power(prob::InstantaneousProblem)
-     @unpack quad_pts, nearest = prob. disc
-    check_solved!(prob) 
-    forces = get_forces(prob)
-    vels = prob.disc.velocity
-    sum(dot(forces[n], vels[n]) for n in nearest)
+    check_solved!(prob)
+    _total_power(get_forces(prob), prob.disc)
 end
+
+# Rate of working of the surface tractions, P = sum_q w_q <f_{nearest[q]}, u_{nearest[q]}>.
+# The sum runs over quadrature points, like total_force and total_torque: summing over force
+# points instead drops the patch multiplicity, which is the bug fixed in 7b3326f (introduced
+# by fecbebf during the old-API port, and shipped in the v0.2.0 tag).
+function _total_power(forces, disc::NearestDiscretisation)
+    @unpack nearest, velocity, quad_wts = disc
+    sum(quad_weight(quad_wts, q) * dot(forces[nearest[q]], velocity[nearest[q]])
+        for q in eachindex(nearest))
+end
+
+_total_power(forces, disc::NystromDiscretisation) =
+    sum(dot(forces[i], disc.velocity[i]) for i in eachindex(forces))
 
 function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
     check_solved!(prob)
@@ -84,12 +101,11 @@ end
 
 
 function shear_tensor(forces, disc::NearestDiscretisation)
-    @unpack quad_pts, nearest = disc
-    sum((forces[nearest[i]]*quad_pts[i]') for i in eachindex(quad_pts))
+    @unpack quad_pts, nearest, quad_wts = disc
+    sum(quad_weight(quad_wts, q) * (forces[nearest[q]]*quad_pts[q]') for q in eachindex(quad_pts))
 end
 
 function shear_tensor(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
-    @unpack quad_pts, nearest = disc
     sum((forces[i]*disc.force_pts[i]') for i in eachindex(disc.force_pts))
 end
 

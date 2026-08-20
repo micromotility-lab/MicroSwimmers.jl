@@ -13,7 +13,8 @@ export dense_solve!, assemble_swimming!
 export FluidBoundary, update_boundary!, move_boundary!
 export Frame
 export Discretisation, NearestDiscretisation, NystromDiscretisation
-export nf, nq
+export nf, nq, total_quad_weight
+export supports_quadrature_weights, quadrature_weights!
 export Model, FlagellumModel, CellBodyModel
 export Part, MicroSwimmer, discretise
 export grand_resistance_matrix, add_rigid_body_motion!

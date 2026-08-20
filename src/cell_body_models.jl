@@ -98,11 +98,15 @@ end
 
 # The groove filter discards points, so the cloud size is only known once the surface has
 # been sampled — size the discretisation from the clouds rather than from N and Q.
-function (m::EllipsoidalGroovedBody)(disc::NearestDiscretisation, N::Int, Q::Int; kwargs...)
+# `weighted` is accepted and ignored: this model filters a Fibonacci cloud and so has no
+# area elements to offer. Part() rejects `weighted=true` for it up front via
+# supports_quadrature_weights, so only the false case ever reaches here.
+function (m::EllipsoidalGroovedBody)(disc::NearestDiscretisation, N::Int, Q::Int; weighted=false, kwargs...)
     T = eltype(eltype(disc.force_pts))
     disc.force_pts = reduce(vcat, m(N; kwargs...))
     disc.quad_pts  = reduce(vcat, m(Q; kwargs...))
     disc.velocity  = [zero(SVector{3,T}) for _ in 1:length(disc.force_pts)]
+    disc.quad_wts  = nothing
     disc
 end
 

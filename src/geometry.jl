@@ -130,10 +130,29 @@ function bisect(g, lo, hi; tol=1e-12, max_iter=60)
     (lo + hi)/2
 end
 
-
-function raymarch_cloud!(pts, f, R, N; seed=zero(SVector{3,Float64}),
-                        num_steps=200, max_iter=60, tol=1e-12)
+# Ray-march an implicit surface f(x) = 0 from `seed` along N Fibonacci directions, pushing
+# every sign change onto `pts` and its surface quadrature weight onto `wts`.
+#
+# The weight is the Jacobian of the (solid angle -> surface area) map:
+#
+#     dA = t^2 * ΔΩ / |n·d|
+#
+# with ΔΩ = 4π/N the solid angle carried by each ray, t the hit distance and n the unit
+# surface normal. `sum(wts)` is therefore the surface area — see `total_quad_weight`.
+#
+# Two caveats, both real for the grooved bodies in implicit_body.jl:
+#
+#  * The formula is exact only when the surface is star-shaped about `seed`, i.e. each ray
+#    crosses exactly once. A ray that crosses 2-3 times (as happens on
+#    ImplicitGroovedEllipsoid, which is not star-shaped about `groove_center`) gives every
+#    crossing the full ΔΩ of that ray, over-counting the area.
+#  * Grazing hits (|n·d| -> 0) send the weight to infinity. We warn rather than clamp: a
+#    clamp would silently bias the quadrature, whereas a warning points at the seed choice,
+#    which is the actual fix.
+function raymarch_cloud!(pts, wts, f, R, N; seed=zero(SVector{3,Float64}),
+                        num_steps=200, max_iter=60, tol=1e-12, grazing_tol=1e-3)
     ΔΩ = 4π/N
+    grazing = 0
     for i in 0:N-1
         d  = fib_dir(i, N)
         ts = range(0, R; length=num_steps)
@@ -143,10 +162,21 @@ function raymarch_cloud!(pts, f, R, N; seed=zero(SVector{3,Float64}),
                 t = bisect(τ -> f(seed + τ*d), ts[j], ts[j+1]; tol, max_iter)
                 p = seed + t*d
                 n = normalize(ForwardDiff.gradient(f, p))
+                cosθ = abs(dot(n, d))
+                cosθ < grazing_tol && (grazing += 1)
                 push!(pts, p)
-                # wts[i+1] = t^2 * ΔΩ / abs(dot(n, d))
+                push!(wts, t^2 * ΔΩ / cosθ)
             end
         end
     end
-    pts #, wts
+    grazing > 0 && @warn "raymarch_cloud!: $grazing of $(length(pts)) hits are near-grazing \
+        (|n·d| < $grazing_tol); their quadrature weights are unreliable. Consider moving `seed`."
+    pts, wts
+end
+
+# points-only convenience method: march the surface and discard the weights
+function raymarch_cloud!(pts, f, R, N; kwargs...)
+    # grazing_tol=0 suppresses the weight warning: no weights are kept, so it is noise here
+    raymarch_cloud!(pts, Float64[], f, R, N; grazing_tol=0.0, kwargs...)
+    pts
 end
