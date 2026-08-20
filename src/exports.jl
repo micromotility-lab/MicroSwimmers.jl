@@ -61,5 +61,5 @@ export VelocityField, PlanarVelocityField, get_velocity_function
 export velocity_flux, velocity_flux_polar
 export TimeAveragedPlanarVelocityField, TimeAveragedDisturbanceField
 export shear_tensor, stresslet_from_shear, force_and_torque_shear
-export body_shape_parameter, body_shape_oscillation, average_body_shape, body_shape_tensor
+export body_shape_parameter, body_shape_oscillation, average_body_shape, body_mobility_tensor
 export RigidBodyProblem, orientation_ode
