@@ -29,7 +29,7 @@ function average_stresslet_tensor(prob::InstantaneousProblem; period=1.0, num_ts
         solve_problem!(prob)
         push!(Ss, stresslet_tensor(prob))
     end
-    sum(Ss) / num_ts
+    mean(Ss)
 end
 
 # function total_power(prob::InstantaneousProblem)
