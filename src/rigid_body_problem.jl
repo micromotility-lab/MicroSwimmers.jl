@@ -6,7 +6,7 @@ function body_shape_parameter(ms::MicroSwimmer; eps = 0.1)
     Breth =  B[6,1,2]- B[5,1,3]
     else
         Breth = NaN
-        println("not symmetric enough")
+        #println("not symmetric enough")
     end
     Breth
 end

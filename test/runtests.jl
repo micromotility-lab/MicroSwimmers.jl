@@ -18,5 +18,6 @@ using Aqua
     include("nystrom_tests.jl")
     include("trajectories_tests.jl")
     include("regression_tests.jl")
+    include("rigid_body_problem_tests.jl")
     include("quality_tests.jl")
 end
