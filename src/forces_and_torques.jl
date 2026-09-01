@@ -95,19 +95,15 @@ end
 
 function force_and_torque_shear(ms::MicroSwimmer; eps=0.1)
     Gamma = zeros(6,3,3)
+    prob = ResistanceProblem(ms; eps=eps)
     for (i, n) in enumerate([ex, ey, ez]) 
-        prob = ResistanceProblem(ms, eps=eps)
-        [add_rigid_body_motion!(part, n,zero(SVector{3,Float64})) for part in prob.microswimmer.parts]
+        add_rigid_body_motion!!(prob.microswimmer, n, zero(SVector{3,Float64}))
         solve_problem!(prob)
-        f = get_forces(prob)
-        M= shear_tensor(f, prob.disc)
-        Gamma[i,:,:] = 0.5 * (M + M')- (1/3)*tr(M)*I 
+        Gamma[i,:,:] = stresslet_tensor(prob)
     
-        [add_rigid_body_motion!(part, zero(SVector{3,Float64}), n) for part in prob.microswimmer.parts]
+        add_rigid_body_motion!!(prob.microswimmer, zero(SVector{3,Float64}), n)
         solve_problem!(prob)
-        f = get_forces(prob)
-        M= shear_tensor(f, prob.disc)
-        Gamma[3+i,:,:] = 0.5 * (M + M')- (1/3)*tr(M)*I 
+        Gamma[3+i,:,:] = stresslet_tensor(prob)
         #symmetry and traceless of the rate of strain means that we can make shear tensor symmetric and traceless too
     end
     Gamma
