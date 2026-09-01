@@ -63,3 +63,6 @@ export TimeAveragedPlanarVelocityField, TimeAveragedDisturbanceField
 export shear_tensor, stresslet_from_shear, force_and_torque_shear
 export body_shape_parameter, body_shape_oscillation, average_body_shape, body_shape_tensor
 export RigidBodyProblem, orientation_ode
+
+# Repulsion relaxation
+export raymarch_cloud!,relax_cloud!, surface_normal

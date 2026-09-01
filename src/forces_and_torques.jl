@@ -21,31 +21,6 @@ function total_force_and_torque(prob::InstantaneousProblem)
     total_force(forces, prob.disc), total_torque(forces, prob.disc)
 end
 
-
-function stresslet_tensor(prob::InstantaneousProblem)
-    check_solved!(prob)
-    forces = get_forces(prob)
-    _stresslet_tensor(forces, prob.disc)
-end
-
-function _stresslet_tensor(forces, disc::NearestDiscretisation)
-    @unpack quad_pts, nearest, quad_wts = disc
-    S_raw = 0.5 * sum(
-        quad_weight(quad_wts, q) *
-            (forces[nearest[q]] * quad_pts[q]' + quad_pts[q] * forces[nearest[q]]')
-        for q in eachindex(quad_pts)
-    )
-    S_raw - (1/3)*tr(S_raw)*I
-end
-
-function _stresslet_tensor(forces, disc::NystromDiscretisation)
-    S_raw = 0.5 * sum(
-        forces[i] * disc.force_pts[i]' + disc.force_pts[i] * forces[i]'
-        for i in eachindex(disc.force_pts)
-    )
-    S_raw - (1/3)*tr(S_raw)*I
-end
-
 function average_stresslet_tensor(prob::InstantaneousProblem; period=1.0, num_ts=30)
     check_solved!(prob)
     Ss = []
@@ -99,23 +74,23 @@ function total_energy_dissipated(prob::SwimmingTrajectoryProblem)
     sum(0.5 * (Es[i] + Es[i+1]) * (traj.t[i+1] - traj.t[i]) for i in 1:length(traj.t)-1)
 end
 
-
+# First moment of the surface traction, M = Σ_q w_q f_q p_q'.
+# Symmetric traceless part is the stresslet; the skew part carries the torque.
 function shear_tensor(forces, disc::NearestDiscretisation)
     @unpack quad_pts, nearest, quad_wts = disc
-    sum(quad_weight(quad_wts, q) * (forces[nearest[q]]*quad_pts[q]') for q in eachindex(quad_pts))
+    sum(quad_weight(quad_wts, q) * (forces[nearest[q]] * quad_pts[q]')
+        for q in eachindex(quad_pts))
 end
 
-function shear_tensor(forces::AbstractVector{<:SVector}, disc::NystromDiscretisation)
-    sum((forces[i]*disc.force_pts[i]') for i in eachindex(disc.force_pts))
-end
+shear_tensor(forces, disc::NystromDiscretisation) =
+    sum(forces[i] * disc.force_pts[i]' for i in eachindex(disc.force_pts))
 
-_stresslet_from_shear(S) = 0.5 * (S + S') - (1/3)*tr(S)*I
+_stresslet_from_shear(M) = 0.5 * (M + M') - (1/3) * tr(M) * I
+_stresslet_tensor(forces, disc) = _stresslet_from_shear(shear_tensor(forces, disc))
 
-function stresslet_from_shear(prob::InstantaneousProblem)
+function stresslet_tensor(prob::InstantaneousProblem)
     check_solved!(prob)
-    forces = get_forces(prob)
-    M = shear_tensor(forces, prob.disc)
-    _stresslet_from_shear(M)
+    _stresslet_tensor(get_forces(prob), prob.disc)
 end
 
 function force_and_torque_shear(ms::MicroSwimmer; eps=0.1)

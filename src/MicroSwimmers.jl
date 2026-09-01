@@ -16,6 +16,7 @@ using FastGaussQuadrature
 using DSP
 using ForwardDiff
 using Polyester
+using NearestNeighbors
 
 function __init__()
     # MKL's OpenMP runtime spin-waits (default 200ms) after a parallel region

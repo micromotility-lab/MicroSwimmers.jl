@@ -264,12 +264,13 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisatio
     disc     = NystromDiscretisation(N)
     kernel   = RegStokeslet(eps)
 
+    # make_hybrid_cache already returns a fully initialised PreconditionerBox, so the
+    # non-hybrid branch has nothing to preallocate — it just carries `nothing`, exactly as
+    # the NearestDiscretisation constructor above does.
     gmres_cache, pl_box = hybrid ?
         make_hybrid_cache(ms, disc, kernel, mu, N; gmres_reltol=gmres_reltol, gmres_maxiters=gmres_maxiters) :
-        (; factors=Matrix{Float64}(undef, n, n), ipiv=iVector{Int}(undef, n))
+        (nothing, nothing)
 
-
-    pl_box.lu      = LU(pl_box.factors, pl_box.ipiv, 0)
     prob = SwimmingProblem(
         ms,
         disc,

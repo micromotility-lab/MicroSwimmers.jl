@@ -180,3 +180,170 @@ function raymarch_cloud!(pts, f, R, N; kwargs...)
     raymarch_cloud!(pts, Float64[], f, R, N; grazing_tol=0.0, kwargs...)
     pts
 end
+
+"""
+Repulsion relaxation of a point cloud constrained to an implicit surface {f = 0}.
+
+Takes an arbitrary (e.g. ray-marched, non-uniformly spaced) cloud and relaxes it
+towards a quasi-uniform distribution by tangential Gaussian repulsion plus Newton
+re-projection onto the level set.
+
+"""
+
+# ---------------------------------------------------------------------------
+# surface primitives
+# ---------------------------------------------------------------------------
+
+surface_normal(f, p::SVector{3,Float64}) = normalize(ForwardDiff.gradient(f, p))
+
+"""
+    project_to_surface(f, p; tol=1e-12, max_iter=8)
+
+Pull `p` back onto {f = 0} by Newton iteration along ∇f.
+
+This is *not* a closest-point projection — it walks along the gradient direction,
+which is only the shortest route in the limit. That is fine here: the tangential
+step that knocked the point off the surface is small by construction.
+
+Converges quadratically. For an implicit function whose |∇f| varies a lot over
+the surface (e.g. an elongated ellipsoid) the step length varies with it, but
+convergence is unaffected.
+"""
+function project_to_surface(f, p::SVector{3,Float64}; tol=1e-12, max_iter=8)
+    for _ in 1:max_iter
+        v = f(p)
+        abs(v) < tol && return p
+        g = ForwardDiff.gradient(f, p)
+        p -= (v / dot(g, g)) * g
+    end
+    return p
+end
+
+# ---------------------------------------------------------------------------
+# diagnostics
+# ---------------------------------------------------------------------------
+
+"""
+    spacing_stats(pts)
+
+Nearest-neighbour spacing statistics. `cv` (coefficient of variation) is the
+headline number: it measures how uniform the point set is, independent of scale.
+
+Rough guide:
+  cv ≳ 0.5    strongly non-uniform (typical raw ray-marched cloud on a 5:1:1 body)
+  cv ≈ 0.15   partially relaxed
+  cv ≈ 0.05   well relaxed; local packing is near-hexagonal
+"""
+function spacing_stats(pts::Vector{SVector{3,Float64}})
+    tree = KDTree(pts)
+    _, dists = knn(tree, pts, 2, true)      # dd[1] is the point itself
+    d = [dd[2] for dd in dists]
+    return (min = minimum(d), mean = mean(d), max = maximum(d), cv = std(d) / mean(d))
+end
+
+# ---------------------------------------------------------------------------
+# the relaxation itself
+# ---------------------------------------------------------------------------
+
+"""
+    relax_cloud!(pts, f; area, kwargs...)
+
+Relax `pts` in place towards a quasi-uniform distribution on {f = 0}.
+
+`area` is the total surface area, used only to set the repulsion length scale
+σ ≈ √(area/N). A rough value is fine — `sum(wts)` from a ray march works well,
+because the local weight errors cancel in the sum even when individual weights
+are poor.
+
+Keyword arguments
+  iters         maximum number of relaxation sweeps
+  σ_mult        repulsion range as a multiple of target spacing √(area/N)
+  η             step size (displacement = η·σ·F)
+  max_step      hard cap on displacement per sweep, in units of σ
+  cutoff        neighbour search radius, in units of σ (3σ captures >99% of the Gaussian)
+  rebuild_every rebuild the KD-tree every this many sweeps
+  tol           stop when the largest displacement falls below tol·σ
+
+Uses a Jacobi update (all forces computed from the old positions, then all points
+moved at once). Gauss–Seidel converges in fewer sweeps but is order-dependent and
+not thread-safe.
+"""
+function relax_cloud!(pts::Vector{SVector{3,Float64}}, f;
+                      area::Real,
+                      iters         = 300,
+                      σ_mult        = 1.2,
+                      η             = 0.15,
+                      max_step      = 0.4,
+                      cutoff        = 3.0,
+                      rebuild_every = 4,
+                      tol           = 1e-4,
+                      verbose       = true)
+
+    N  = length(pts)
+    h  = sqrt(area / N)              # target mean spacing
+    σ  = σ_mult * h
+    rc = cutoff * σ
+    inv2σ² = 1 / (2σ^2)
+
+    disp = Vector{SVector{3,Float64}}(undef, N)
+    tree = KDTree(pts)
+
+    if verbose
+        s = spacing_stats(pts)
+        @info "relax_cloud! start" N σ=round(σ, sigdigits=4) cv=round(s.cv, digits=4)
+    end
+
+    for it in 1:iters
+        (it - 1) % rebuild_every == 0 && (tree = KDTree(pts))
+        nbrs = inrange(tree, pts, rc)
+
+        Threads.@threads for i in 1:N
+            p = pts[i]
+            F = zero(SVector{3,Float64})
+            wsum = 0.0
+            @inbounds for j in nbrs[i]
+                j == i && continue
+                d  = p - pts[j]
+                r2 = dot(d, d)
+                r2 < 1e-30 && continue
+                # Gaussian repulsion: bounded as r → 0, so a coincident pair
+                # cannot blow the explicit step up.
+                k = exp(-r2 * inv2σ²)
+                F += d * (k / sqrt(r2)); wsum += k
+            end
+            wsum > 0 && (F /= wsum)
+
+            # keep only the tangential component — the point slides, never lifts
+            n  = surface_normal(f, p)
+            F -= dot(F, n) * n
+
+            δ  = (η * σ) * F
+            nδ = norm(δ)
+            nδ > max_step * σ && (δ *= (max_step * σ) / nδ)
+            disp[i] = δ
+        end
+
+        moved = 0.0
+        @inbounds for i in 1:N
+            pts[i] = project_to_surface(f, pts[i] + disp[i])
+            moved  = max(moved, norm(disp[i]))
+        end
+
+        if verbose && (it == 1 || it % 25 == 0)
+            s = spacing_stats(pts)
+            @info "relax_cloud!" iter=it max_move_over_σ=round(moved/σ, digits=4) cv=round(s.cv, digits=4)
+        end
+
+        if moved < tol * σ
+            verbose && @info "relax_cloud! converged" iter=it
+            break
+        end
+    end
+
+    if verbose
+        s = spacing_stats(pts)
+        @info "relax_cloud! done" cv=round(s.cv, digits=4) min_spacing=round(s.min, sigdigits=4)
+    end
+    return pts
+end
+

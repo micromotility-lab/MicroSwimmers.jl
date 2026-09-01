@@ -20,6 +20,8 @@ function (m::ImplicitBodyModel)(disc::NearestDiscretisation, N, Q; weighted=fals
       raymarch_cloud!(disc.force_pts, f, R, N; seed=seed(m))
       wts = T[]
       raymarch_cloud!(disc.quad_pts, wts, f, R, Q; seed=seed(m))
+    #   relax_cloud!(disc.force_pts, f; area=sum(wts), iters=1000)
+      relax_cloud!(disc.quad_pts, f; area=sum(wts), iters=1000)
       disc.quad_wts = weighted ? wts : nothing
       disc.velocity = [zero(SVector{3,T}) for _ in 1:length(disc.force_pts)]
 end
