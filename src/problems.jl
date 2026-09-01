@@ -55,27 +55,31 @@ function rotate_problem!(prob::InstantaneousProblem, B::AbstractMatrix{T}) where
     prob.microswimmer.frame = Frame(fr.location, SMatrix{3,3,T,9}(B) * fr.orientation)
 end
 
+# The global partition has one range per *region*, and a Part may contribute several
+# (PlanarVanedFlagellum contributes two), so the ranges can no longer be indexed by part
+# number. Each Part still occupies one contiguous slice, so a running offset locates it —
+# the same way the Nystrom gather below has always worked.
 function gather_nearest!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
-    for i in eachindex(microswimmer.parts)
-        part  = microswimmer.parts[i]
-        f_rng = disc.force_part_ranges[i]
-        q_rng = disc.quad_part_ranges[i]
-        foff  = first(f_rng) - 1
-        @views disc.nearest[q_rng] .= part.disc.nearest .+ foff
+    foff = 0; qoff = 0
+    for part in microswimmer.parts
+        nfp, nqp = nf(part.disc), nq(part.disc)
+        @views disc.nearest[qoff+1:qoff+nqp] .= part.disc.nearest .+ foff
+        foff += nfp; qoff += nqp
     end
 end
 
 function gather!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
     @unpack microswimmer, disc = prob
-    for (i, p) in enumerate(microswimmer.parts)
-        gather_part!(disc, microswimmer.frame, p, i)   # <- barrier
+    foff = 0; qoff = 0
+    for p in microswimmer.parts
+        nfp, nqp = nf(p.disc), nq(p.disc)
+        gather_part!(disc, microswimmer.frame, p, foff+1:foff+nfp, qoff+1:qoff+nqp)   # <- barrier
+        foff += nfp; qoff += nqp
     end
 end
-function gather_part!(disc, ms_frame::Frame, p::Part, i)
+function gather_part!(disc, ms_frame::Frame, p::Part, f_rng, q_rng)
     lab_frame = ms_frame * p.frame
-    f_rng     = disc.force_part_ranges[i]
-    q_rng     = disc.quad_part_ranges[i]
     @views disc.force_pts[f_rng] .= lab_frame.(p.disc.force_pts)
     @views disc.velocity[f_rng]  .= Ref(lab_frame.orientation) .* p.disc.velocity
     @views disc.quad_pts[q_rng]  .= lab_frame.(p.disc.quad_pts)
@@ -103,6 +107,52 @@ function init_quad_weights!(disc::NearestDiscretisation, ms::MicroSwimmer)
     any(p -> is_weighted(p.disc), ms.parts) || return disc
     disc.quad_wts = ones(eltype(eltype(disc.quad_pts)), nq(disc))
     disc
+end
+
+# Build the swimmer's global discretisation with one region per sub-part rather than one per
+# Part, so a PlanarVanedFlagellum can carry a filament radius on its flagellum and a different
+# thickness on its vane. eps is invariant under both deformation and a rigid Frame, so unlike
+# the quadrature weights it is copied once here and never re-gathered.
+function global_discretisation(ms::MicroSwimmer)
+    f_sizes = Int[]; q_sizes = Int[]; epss = Float64[]
+    for p in ms.parts
+        append!(f_sizes, length.(p.disc.force_part_ranges))
+        append!(q_sizes, length.(p.disc.quad_part_ranges))
+        append!(epss,    p.disc.quad_eps)
+    end
+    disc = NearestDiscretisation(f_sizes, q_sizes)
+    init_quad_weights!(disc, ms)
+    set_eps!(disc, epss)
+    disc
+end
+
+# The kernel keeps a scalar eps only for call sites that assemble without a region partition
+# (hand-built discretisations, the low-level assemble! arities). Every solve path forwards the
+# partition, so this is never what regularises a solve — it is the swimmer's smallest eps
+# because under-regularising is the safer way to be wrong.
+kernel_eps_fallback(ms::MicroSwimmer) = minimum(minimum(p.disc.quad_eps) for p in ms.parts)
+
+# Nystrom collocates, so its one partition indexes force points and there are no quadrature
+# points to gather separately.
+function global_nystrom_discretisation(ms::MicroSwimmer)
+    sizes = Int[]; epss = Float64[]
+    for p in ms.parts
+        append!(sizes, length.(p.disc.quad_part_ranges))
+        append!(epss,  p.disc.quad_eps)
+    end
+    N    = sum(sizes)
+    disc = NystromDiscretisation(N)
+    disc.quad_part_ranges = ranges_from_sizes(sizes)
+    set_eps!(disc, epss)
+    disc
+end
+
+function warn_problem_eps(eps)
+    isnothing(eps) && return nothing
+    @warn "`eps` at the problem level no longer has any effect — the regularisation parameter " *
+          "now belongs to each part's discretisation. Use `Part(model, N, Q; eps=$eps)` or " *
+          "`set_eps!(part, $eps)`. Solving with each part's own eps." maxlog=1
+    nothing
 end
 
 # function gather!(prob::InstantaneousProblem{<:Any, <:NearestDiscretisation})
@@ -219,16 +269,15 @@ function make_hybrid_cache(ms::MicroSwimmer, disc::Discretisation, kernel::Kerne
 end
 
 function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}};
-    mu=1.0, eps=0.1, wall=false, alg=LUFactorization(),
+    mu=1.0, eps=nothing, wall=false, alg=LUFactorization(),
     hybrid=false, refactor_interval=20, max_refactor_interval=100,
     gmres_reltol=1e-10, gmres_maxiters=50
 )
-    nf_sizes = [nf(p.disc) for p in ms.parts]
-    nq_sizes = [nq(p.disc) for p in ms.parts]
-    N = sum(nf_sizes); Q = sum(nq_sizes)
-    disc = NearestDiscretisation(nf_sizes, nq_sizes)
-    init_quad_weights!(disc, ms)
-    kernel = wall ? RegBlakelet(eps) : RegStokeslet(eps)
+    warn_problem_eps(eps)
+    disc = global_discretisation(ms)
+    N = nf(disc)
+    ε0 = kernel_eps_fallback(ms)
+    kernel = wall ? RegBlakelet(ε0) : RegStokeslet(ε0)
 
     gmres_cache, pl_box = hybrid ?
         make_hybrid_cache(ms, disc, kernel, mu, N; gmres_reltol=gmres_reltol, gmres_maxiters=gmres_maxiters) :
@@ -255,14 +304,14 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
 end
 
 function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}};
-    mu=1.0, eps=0.1, alg=LUFactorization(),
+    mu=1.0, eps=nothing, alg=LUFactorization(),
     hybrid=false, refactor_interval=20, max_refactor_interval=100,
     gmres_reltol=1e-7, gmres_maxiters=5
 )
-    nf_sizes = [nf(p.disc) for p in ms.parts]
-    N        = sum(nf_sizes)
-    disc     = NystromDiscretisation(N)
-    kernel   = RegStokeslet(eps)
+    warn_problem_eps(eps)
+    disc   = global_nystrom_discretisation(ms)
+    N      = nf(disc)
+    kernel = RegStokeslet(kernel_eps_fallback(ms))
 
     # make_hybrid_cache already returns a fully initialised PreconditionerBox, so the
     # non-hybrid branch has nothing to preallocate — it just carries `nothing`, exactly as
@@ -448,19 +497,18 @@ mutable struct ResistanceProblem{MS <: MicroSwimmer, D <: Discretisation, T <: N
     kernel::K
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=0.1, wall=false, alg=LUFactorization())
-    nf_sizes = [nf(p.disc) for p in ms.parts]
-    nq_sizes = [nq(p.disc) for p in ms.parts]
-    N = sum(nf_sizes); Q = sum(nq_sizes)
-    disc = NearestDiscretisation(nf_sizes, nq_sizes)
-    init_quad_weights!(disc, ms)
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=nothing, wall=false, alg=LUFactorization())
+    warn_problem_eps(eps)
+    disc = global_discretisation(ms)
+    N    = nf(disc)
+    ε0   = kernel_eps_fallback(ms)
     prob = ResistanceProblem(
         ms,
         disc,
         Float64(mu),
         init(LinearProblem(zeros(3N, 3N), zeros(3N)), alg),
         nothing,
-        wall ? RegBlakelet(eps) : RegStokeslet(eps)
+        wall ? RegBlakelet(ε0) : RegStokeslet(ε0)
     )
     gather_nearest!(prob)
     prob
@@ -582,7 +630,7 @@ function SwimmingTrajectoryProblem(
     # B=I3,
     t_final=20.0,
     saveat=0.05,
-    eps=0.1,
+    eps=nothing,
     mu=1.0,
     wall=false,
     alg=LUFactorization(),
@@ -593,7 +641,7 @@ function SwimmingTrajectoryProblem(
     gmres_maxiters=50
 )
     T = Float64
-    sprob = SwimmingProblem(ms; eps=T(eps), mu=T(mu), wall=wall,
+    sprob = SwimmingProblem(ms; eps=eps, mu=T(mu), wall=wall,
         hybrid=hybrid, alg=alg, refactor_interval=refactor_interval,
         max_refactor_interval=max_refactor_interval,
         gmres_reltol=gmres_reltol, gmres_maxiters=gmres_maxiters)
@@ -681,7 +729,7 @@ function ParticleTrajectoryProblem(
     zs=range(0.2, 3.2, 6),
     t_final::T=20.0,
     saveat::T=0.05,
-    eps=0.01,
+    eps=nothing,
     mu=1.0
 ) where {T<:Number}
     num_particles = length(ys)*length(zs)
@@ -696,7 +744,8 @@ function ParticleTrajectoryProblem(
             x_sv = SVector{3}(X[3i-2], X[3i-1], X[3i])
             Ai   = @view A[3i-2:3i, :]
             assemble!(Ai, [x_sv], rprob.disc.quad_pts, rprob.disc.nearest,
-                      rprob.disc.quad_wts, rprob.kernel; μ=rprob.mu)
+                      rprob.disc.quad_wts, rprob.kernel; μ=rprob.mu,
+                      ranges=rprob.disc.quad_part_ranges, quad_eps=rprob.disc.quad_eps)
         end
         dX .= A * rprob.force_vals
     end

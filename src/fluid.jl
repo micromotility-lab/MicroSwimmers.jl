@@ -4,6 +4,8 @@ struct FluidVelocity{T <: Number, K <: Kernel}
     quad_pts::Vector{SVector{3,T}}
     nearest::Vector{Int}
     quad_wts::Union{Nothing, Vector{T}}
+    ranges::Vector{UnitRange{Int}}
+    quad_eps::Vector{T}
     kernel::K
     mu::T
     force_vals::Vector{T}   # 3N force components (excluding U/Ω for SwimmingProblem)
@@ -21,6 +23,10 @@ _fluid_nearest(disc::NystromDiscretisation) = collect(1:nf(disc))
 _fluid_quad_wts(disc::NearestDiscretisation) = disc.quad_wts
 _fluid_quad_wts(::NystromDiscretisation)     = nothing
 
+# The regularisation partition travels with the quadrature rule for the same reason: a field
+# point evaluated at the wrong eps disagrees with the solve that produced force_vals.
+_fluid_ranges(disc::Discretisation) = disc.quad_part_ranges
+
 function FluidVelocity(prob::InstantaneousProblem)
     check_solved!(prob)
     N  = nf(prob.disc)
@@ -29,6 +35,8 @@ function FluidVelocity(prob::InstantaneousProblem)
         _fluid_quad_pts(prob.disc),
         _fluid_nearest(prob.disc),
         _fluid_quad_wts(prob.disc),
+        _fluid_ranges(prob.disc),
+        prob.disc.quad_eps,
         prob.kernel,
         prob.mu,
         fv,
@@ -37,7 +45,8 @@ function FluidVelocity(prob::InstantaneousProblem)
 end
 
 function (fv::FluidVelocity)(x)
-    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.quad_wts, fv.kernel; μ=fv.mu)
+    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.quad_wts, fv.kernel;
+              μ=fv.mu, ranges=fv.ranges, quad_eps=fv.quad_eps)
     SVector{3}(fv.A * fv.force_vals)
 end
 

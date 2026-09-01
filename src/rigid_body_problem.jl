@@ -1,6 +1,6 @@
 # body shape parameter - Bretherton number based on the terms of the body shape tensor B, which is the contraction of the grand mobility matrix and the shear tensor.
 #if the coefficients corresponding to the Bretherton number are not consistent, then the Bretherton number is set to NaN and a warning is printed.
-function body_shape_parameter(ms::MicroSwimmer; eps = 0.1)   
+function body_shape_parameter(ms::MicroSwimmer; eps = nothing)
     B = body_mobility_tensor(ms; eps = eps)
     if abs((B[5,1,3])+(B[6,1,2]))< 1e-1
     Breth =  B[6,1,2]- B[5,1,3]
@@ -12,7 +12,7 @@ function body_shape_parameter(ms::MicroSwimmer; eps = 0.1)
 end
 #use grand mobility tensor and shear-force/torque tensor to determine mobitly tensor in body fixed frame, 
 #can then be used to calculate rigid body motion byor determine number of independent coefficients in mobility problem
-function body_mobility_tensor(ms::MicroSwimmer; eps = 0.1)   
+function body_mobility_tensor(ms::MicroSwimmer; eps = nothing)
     ms = body_fixed(ms)
     R = grand_resistance_matrix(ms,eps = eps)
     K = R^-1
@@ -23,7 +23,7 @@ function body_mobility_tensor(ms::MicroSwimmer; eps = 0.1)
     B
 end
 
-function body_shape_oscillation(ms::MicroSwimmer; period=1.0, num_ts=30, eps = 0.1)
+function body_shape_oscillation(ms::MicroSwimmer; period=1.0, num_ts=30, eps = nothing)
     Breths = Float64[]
     for t in range(0, period, num_ts)[1:end-1]
         update_boundary!(ms, t)
@@ -58,11 +58,12 @@ end
 function RigidBodyProblem(ms::MicroSwimmer; 
     Omega_shear = SVector(0.5, 0.0, 0.0),
     strain_shear = SMatrix{3,3}(0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5, 0.0),
-    B_torque = body_mobility_tensor(ms; eps = 1e-5)[4:6, :, :],
+    B_torque = body_mobility_tensor(ms)[4:6, :, :],
     t_final=20.0,
     saveat=0.05,
-    eps=0.1
+    eps=nothing
     )
+    warn_problem_eps(eps)
 
     T = Float64
     X0 = SVector{6,T}(ms.frame.orientation[:,1]..., ms.frame.orientation[:,2]...)

@@ -19,8 +19,9 @@ using MicroSwimmers
 # # A spherical cell body (semi-axes a = b = c = 1 μm)
 body = EllipsoidBody(1.0, 1.0, 1.0),
 
-# discretise the body with N = 213 force points and Q=917 quadrature points
-body_disc = Part(body, 213, 917)
+# discretise the body: eps = 0.25 um is a purely numerical regularisation of the singular
+# Stokeslet here, so N and Q are chosen from it and from a target force-point spacing
+body_disc = Part(body; eps=0.25)
 
 # Define a planar flagellum beating pattern (tangent-angle model, Gallagher et al. 2018):
 #   θ(s,t) = Cs + (R₀ + R₁ sin(ks/L)) cos(ωt - ϕs/L)
@@ -35,9 +36,11 @@ flagellum = PlanarFlagellum(
     0.0,   # δ:  overall phase
 )
 
-# discretise the flagellum, attached at the edge of the body on the x-axis
+# discretise the flagellum, attached at the edge of the body on the x-axis. Here eps is the
+# physical radius of the filament, not a numerical parameter -- each Part carries its own.
 flagellum_disc = Part(
-    flagellum, 23, 127,
+    flagellum;
+    eps=0.05,
     location=[1.0, 0.0, 0.0],
     orientation=rotation_matrix([1.0, 0.0, 0.0], 0.0),
 )

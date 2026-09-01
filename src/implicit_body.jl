@@ -41,6 +41,7 @@ end
 
 implicit(m::ImplicitEllipsoid, x::SVector{3,T}) where {T <: Number} = ellipsoid(x, m.a, m.b, m.c)
 bounding_radius(m::ImplicitEllipsoid) = 1.2 * maximum([m.a, m.b, m.c])
+surface_area(m::ImplicitEllipsoid) = ellipsoid_area(m.a, m.b, m.c)
 seed(m::ImplicitEllipsoid) = zero(SVector{3, eltype(m.a)})
 
 mutable struct ImplicitGroovedEllipsoid{T <: Number} <: ImplicitBodyModel
@@ -66,4 +67,7 @@ end
 
 implicit(m::ImplicitGroovedEllipsoid, x::SVector{3,T}; k=50) where {T <: Number} = smooth_max(ellipsoid(x, m.a, m.b, m.c), -shifted_rotated_ellipsoid(x, m.g_a, m.g_b, m.g_c, m.groove_center, m.orientation), k)
 bounding_radius(m::ImplicitGroovedEllipsoid) = 1.2 * maximum([abs(m.a + m.g_a), abs(m.b + m.g_b), abs(m.c + m.g_c)])
+# N, Q are ray-direction budgets here, and this surface is not star-shaped about its seed, so
+# the cloud can come out larger than the budget. The ungrooved ellipsoid is an estimate.
+surface_area(m::ImplicitGroovedEllipsoid) = ellipsoid_area(m.a, m.b, m.c)
 seed(m::ImplicitGroovedEllipsoid) = m.groove_center

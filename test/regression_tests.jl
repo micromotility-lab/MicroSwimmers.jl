@@ -10,11 +10,14 @@
     # Reference values below were captured by running this exact code against
     # the current `main` branch and are expected to remain stable under
     # non-behavioural changes (performance work, refactors, comments).
+    #
+    # eps = 0.1 was the problem-level default when these values were captured. It is passed
+    # per part now that eps lives on the discretisation, so the references stay comparable.
 
     @testset "isolated flagellum" begin
         N, Q = 23, 127
         model = PlanarFlagellum(1.0, 0.0, 0.3, 0.15, 2π, 2π, 2π, 0.0)
-        f = Part(model, N, Q)
+        f = Part(model, N, Q; eps=0.1)
         ms = MicroSwimmer([f])
 
         prob = SwimmingProblem(ms)
@@ -38,10 +41,11 @@
         N_body, Q_body = 213, 917
         N, Q = 23, 127
 
-        body = Part(EllipsoidBody(a, b, c), N_body, Q_body)
+        body = Part(EllipsoidBody(a, b, c), N_body, Q_body; eps=0.1)
         f = Part(
             PlanarFlagellum(10.0, 0.0, 0.6, 0.5, π/2, 2π, 2π, 0.0),
             N, Q,
+            eps=0.1,
             location=[1.0, 0.0, 0.0],
             orientation=rotation_matrix([1.0, 0.0, 0.0], 0.0)
         )

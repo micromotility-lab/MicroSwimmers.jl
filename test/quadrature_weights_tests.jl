@@ -154,8 +154,8 @@
         a = 1.0
         errs = Float64[]
         for (N, Q, eps) in [(100, 450, 0.08), (200, 900, 0.05)]
-            body = Part(ImplicitEllipsoid(a, a, a), N, Q; weighted=true)
-            prob = ResistanceProblem(MicroSwimmer([body]); eps=eps)
+            body = Part(ImplicitEllipsoid(a, a, a), N, Q; weighted=true, eps=eps)
+            prob = ResistanceProblem(MicroSwimmer([body]))
             add_rigid_body_motion!(body, SVector(1.0, 0.0, 0.0), zero(SVector{3,Float64}))
             solve_problem!(prob)
             F, _ = total_force_and_torque(prob)
@@ -169,11 +169,11 @@
         # Unlike a sphere, this body's weights vary by a factor of ~4 across the surface,
         # so a wrong weight convention cannot cancel out of the answer.
         b, a = 1.0, 2.0
-        body = Part(ImplicitEllipsoid(b, b, a), 300, 1400; weighted=true)
+        body = Part(ImplicitEllipsoid(b, b, a), 300, 1400; weighted=true, eps=0.04)
         @test maximum(body.disc.quad_wts) / minimum(body.disc.quad_wts) > 3
 
         ms = MicroSwimmer([body])
-        prob = ResistanceProblem(ms; eps=0.04)
+        prob = ResistanceProblem(ms)
 
         add_rigid_body_motion!(body, SVector(0.0, 0.0, 1.0), zero(SVector{3,Float64}))
         solve_problem!(prob)
@@ -190,10 +190,10 @@
         # The sharpest test in the file: it can only pass if the weighted constraint rows in
         # assemble_swimming! and the weighted total_force/total_torque agree on the
         # convention, across a swimmer whose two parts use *different* conventions.
-        body = Part(ImplicitEllipsoid(0.5, 0.5, 0.5), 120, 500; weighted=true)
+        body = Part(ImplicitEllipsoid(0.5, 0.5, 0.5), 120, 500; weighted=true, eps=0.1)
         flag = Part(PlanarFlagellum(1.0, 0.0, 0.3, 0.15, 2π, 2π, 2π, 0.0), 20, 101;
-                    location=SVector(0.0, 0.0, -0.5))
-        prob = SwimmingProblem(MicroSwimmer([body, flag]); eps=0.1)
+                    eps=0.1, location=SVector(0.0, 0.0, -0.5))
+        prob = SwimmingProblem(MicroSwimmer([body, flag]))
 
         for t in (0.0, 0.37)
             update_boundary!(prob, t)
@@ -212,9 +212,9 @@
     @testset "unit weights reproduce the unweighted solve exactly" begin
         a = 1.0
         function drag(weighted)
-            body = Part(ImplicitEllipsoid(a, a, a), 150, 700; weighted=weighted)
+            body = Part(ImplicitEllipsoid(a, a, a), 150, 700; weighted=weighted, eps=0.06)
             weighted && fill!(body.disc.quad_wts, 1.0)
-            prob = ResistanceProblem(MicroSwimmer([body]); eps=0.06)
+            prob = ResistanceProblem(MicroSwimmer([body]))
             add_rigid_body_motion!(body, SVector(1.0, 0.0, 0.0), zero(SVector{3,Float64}))
             solve_problem!(prob)
             first(total_force_and_torque(prob))
@@ -223,8 +223,8 @@
     end
 
     @testset "total_power identity holds on the weighted path" begin
-        body = Part(ImplicitEllipsoid(1.0, 1.0, 1.0), 200, 900; weighted=true)
-        prob = ResistanceProblem(MicroSwimmer([body]); eps=0.05)
+        body = Part(ImplicitEllipsoid(1.0, 1.0, 1.0), 200, 900; weighted=true, eps=0.05)
+        prob = ResistanceProblem(MicroSwimmer([body]))
         U = SVector(0.3, -0.2, 0.5)
         add_rigid_body_motion!(body, U, zero(SVector{3,Float64}))
         solve_problem!(prob)
@@ -237,8 +237,8 @@
         # Evaluating the field at a force point reproduces that node's boundary velocity,
         # since that is exactly the row of the system that was solved. It only holds if the
         # field applies the same quadrature weights the solve did.
-        body = Part(ImplicitEllipsoid(1.0, 1.0, 1.0), 120, 500; weighted=true)
-        prob = ResistanceProblem(MicroSwimmer([body]); eps=0.08)
+        body = Part(ImplicitEllipsoid(1.0, 1.0, 1.0), 120, 500; weighted=true, eps=0.08)
+        prob = ResistanceProblem(MicroSwimmer([body]))
         add_rigid_body_motion!(body, SVector(1.0, 0.0, 0.0), zero(SVector{3,Float64}))
         solve_problem!(prob)
 

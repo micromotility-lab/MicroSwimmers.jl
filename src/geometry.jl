@@ -1,5 +1,10 @@
 ### Ellipsoids
 
+# Knud Thomsen's approximation. The exact surface area needs incomplete elliptic integrals;
+# this is within 1.1% for every axis ratio, which is far tighter than the accuracy of picking
+# a point count from a target spacing.
+ellipsoid_area(a, b, c; p = 1.6075) = 4π * (((a*b)^p + (a*c)^p + (b*c)^p) / 3)^(1/p)
+
 function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Number}
     points = Vector{SVector{3,T}}(undef, num_points)
     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1

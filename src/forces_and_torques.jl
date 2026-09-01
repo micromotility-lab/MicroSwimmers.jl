@@ -93,7 +93,7 @@ function stresslet_tensor(prob::InstantaneousProblem)
     _stresslet_tensor(get_forces(prob), prob.disc)
 end
 
-function force_and_torque_shear(ms::MicroSwimmer; eps=0.1)
+function force_and_torque_shear(ms::MicroSwimmer; eps=nothing)
     Gamma = zeros(6,3,3)
     for (i, n) in enumerate([ex, ey, ez]) 
         prob = ResistanceProblem(ms, eps=eps)
