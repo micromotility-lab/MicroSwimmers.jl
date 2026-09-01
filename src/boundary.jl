@@ -7,6 +7,7 @@ abstract type AbstractMicroSwimmer <: FluidBoundary end
 function move_boundary!(S::AbstractMicroSwimmer, x0=SVector(0.,0.,0.), B=I3, t=0.0)
     S.frame = Frame(SVector{3}(x0), SMatrix{3,3}(B))
     update_boundary!(S, t)
+    S
 end
 
 function move_boundary!(S::AbstractMicroSwimmer, x0::AbstractVector, b1::AbstractVector, b2::AbstractVector, t=0.0)
