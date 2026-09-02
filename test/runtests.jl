@@ -12,6 +12,7 @@ using Aqua
     include("numerics_tests.jl")
     include("discretisations_tests.jl")
     include("quadrature_weights_tests.jl")
+    include("per_part_eps_tests.jl")
     include("problems_stokes_law_tests.jl")
     include("problems_invariants_tests.jl")
     include("problems_hybrid_tests.jl")

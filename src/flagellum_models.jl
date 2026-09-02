@@ -20,6 +20,10 @@ abstract type FlagellumModel <: Model end
 #  Shared discretisation + integrator
 # ---------------------------------------------------------------------------
 
+# Every FlagellumModel parameterises its centreline by fractional arclength s ∈ [0,1] and
+# carries the total length as `L`, so this is exact rather than an estimate.
+arclength(m::FlagellumModel) = m.L
+
 # Starting station and step for the cumulative trapezoid.
 #   include_endpoints=true  : closed rule, nodes at s = 0, 1/(N-1), …, 1   (quad pts)
 #   include_endpoints=false : open rule,   nodes at s = ds, 2ds, …,        (force pts)

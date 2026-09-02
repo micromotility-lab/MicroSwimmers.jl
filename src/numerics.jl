@@ -10,11 +10,17 @@ struct RegStokeslet{T} <: Kernel
     eps::T
 end
 
-@inline function (k::RegStokeslet)(xi, Xj)
+# Two forms throughout: the 2-argument one regularises at the kernel's own `eps`, the
+# 3-argument one takes it per call. Assembly uses the latter so each region of the boundary
+# can carry its own regularisation — the blob is centred on the source point Xj, so the eps
+# that applies is the one belonging to whichever region Xj came from.
+@inline (k::RegStokeslet)(xi, Xj) = k(xi, Xj, k.eps)
+
+@inline function (k::RegStokeslet)(xi, Xj, eps)
     R     = xi - Xj
     rsqr  = dot(R, R)
-    eps2 = k.eps^2
-    denom = inv(sqrt(rsqr + eps2)^3)      
+    eps2  = eps^2
+    denom = inv(sqrt(rsqr + eps2)^3)
     diag  = (rsqr + 2eps2) * denom
     diag * I + (denom * R) * R'
 end
@@ -56,15 +62,16 @@ end
 
 threaded_assembly(::RegBlakelet) = true
 
-@inline function (k::RegBlakelet)(xi, Xj)
-    eps  = k.eps
+@inline (k::RegBlakelet)(xi, Xj) = k(xi, Xj, k.eps)
+
+@inline function (k::RegBlakelet)(xi, Xj, eps)
     eps2 = eps^2
     h    = Xj[3]
 
     stokeslet = RegStokeslet(eps)
 
     # -------- real-space regularised stokeslet --------
-    S = stokeslet(xi, Xj)
+    S = stokeslet(xi, Xj, eps)
 
     # -------- image geometry (reflect source in z = 0) --------
     Y    = @SVector [Xj[1], Xj[2], -Xj[3]]
@@ -341,64 +348,90 @@ end
 @inline quad_weight(::Nothing, ::Int)          = true
 @inline quad_weight(w::AbstractVector, q::Int) = @inbounds w[q]
 
+# The regularisation partition: `ranges[j]` is a contiguous block of quadrature points all
+# regularised at `epsv[j]`. `nothing` means one implicit region at the kernel's own eps, which
+# is what every call site did before eps became per-region.
+@inline eps_regions(::Nothing, ::Nothing, kernel::Kernel, Q::Int) = ((1:Q, kernel.eps),)
+
+@inline function eps_regions(ranges::AbstractVector, epsv::AbstractVector, ::Kernel, ::Int)
+    # zip truncates to the shorter of the two, which would silently drop whole blocks of
+    # quadrature points from the assembly. Once per assemble! call, so it costs nothing.
+    length(ranges) == length(epsv) || throw(ArgumentError(
+        "discretisation has $(length(ranges)) regions but $(length(epsv)) regularisation " *
+        "parameters — call set_eps! after changing the region partition"))
+    zip(ranges, epsv)
+end
+
 assemble!(A, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
+    assemble!(A, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel;
+              μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
 # NystromDiscretisation collocates force and quadrature points, so there are no separate
 # quadrature weights to apply -- it always takes the absorbed path.
 assemble!(A, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble!(A, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
+    assemble!(A, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel;
+              μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
-@inline function accumulate_row!(A, row, xm, quad_pts, nearest, wts, kernel)
-    for (q, yq) in enumerate(quad_pts)
-        S   = kernel(xm, yq) * quad_weight(wts, q)
-        col = 3*nearest[q] - 2
-        @inbounds for b in 1:3, a in 1:3
-            A[row+a-1, col+b-1] += S[a,b]
+# Regions outside, points inside: eps is constant across a region, so it lands in a register
+# once per region rather than being reloaded per quadrature point.
+@inline function accumulate_row!(A, row, xm, quad_pts, nearest, wts, regions, kernel)
+    for (rng, ε) in regions
+        for q in rng
+            S   = kernel(xm, @inbounds(quad_pts[q]), ε) * quad_weight(wts, q)
+            col = 3*(@inbounds nearest[q]) - 2
+            @inbounds for b in 1:3, a in 1:3
+                A[row+a-1, col+b-1] += S[a,b]
+            end
         end
     end
 end
 
 # no `wts` argument => quadrature weights absorbed into the force unknowns
-assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A))) =
-    assemble!(A, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
+assemble!(A, force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)), kwargs...) =
+    assemble!(A, force_pts, quad_pts, nearest, nothing, kernel; μ=μ, kwargs...)
 
-function assemble!(A, force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(A)))
+function assemble!(A, force_pts, quad_pts, nearest, wts, kernel;
+                   μ=one(eltype(A)), ranges=nothing, quad_eps=nothing)
     fill!(A, zero(eltype(A)))
     Nf = length(force_pts)
+    regions = eps_regions(ranges, quad_eps, kernel, length(quad_pts))
     # m (force points) is the outer loop: each m owns a disjoint row block of
     # A, so threads never race on the same A[row,col] accumulator when threaded.
     if threaded_assembly(kernel)
         @batch for m in 1:Nf
-            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel)
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, regions, kernel)
         end
     else
         for m in 1:Nf
-            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel)
+            accumulate_row!(A, 3m - 2, force_pts[m], quad_pts, nearest, wts, regions, kernel)
         end
     end
     A .*= inv(8π*μ)
 end
 
 assemble_swimming!(A, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
+    assemble_swimming!(A, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel;
+                       μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
 assemble_swimming!(A, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(A))) =
-    assemble_swimming!(A, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
+    assemble_swimming!(A, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel;
+                       μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
 assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
-                   force_pts, quad_pts, nearest, kernel; μ=one(eltype(A))) =
-    assemble_swimming!(A, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
+                   force_pts, quad_pts, nearest, kernel; μ=one(eltype(A)), kwargs...) =
+    assemble_swimming!(A, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ, kwargs...)
 
 function assemble_swimming!(A::AbstractMatrix, x0::SVector{3},
-                             force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(A)))
+                             force_pts, quad_pts, nearest, wts, kernel;
+                             μ=one(eltype(A)), ranges=nothing, quad_eps=nothing)
     T  = eltype(A)
     N  = length(force_pts)
     N3 = 3N
     fill!(A, zero(T))
 
     # BEM block: A[3m-2:3m, 3nearest[q]-2:3nearest[q]] += kernel(xm, yq)
-    assemble!(view(A, 1:N3, 1:N3), force_pts, quad_pts, nearest, wts, kernel; μ=μ)
+    assemble!(view(A, 1:N3, 1:N3), force_pts, quad_pts, nearest, wts, kernel;
+              μ=μ, ranges=ranges, quad_eps=quad_eps)
 
     # Rigid body columns: U (cols N3+1:N3+3) and Ω (cols N3+4:N3+6)
     @inbounds for (m, xm) in enumerate(force_pts)
@@ -439,14 +472,16 @@ end
 # factorisation goes stale, GMRES needs a matvec (not a fresh assembly) on every iteration —
 # assembling the dense matrix on every iteration would cost the same as just refactorising it.
 
-@inline function accumulate_row_matvec!(y, row, xm, quad_pts, nearest, wts, kernel, x, invfactor)
+@inline function accumulate_row_matvec!(y, row, xm, quad_pts, nearest, wts, regions, kernel, x, invfactor)
     T   = eltype(y)
     acc = zero(SVector{3,T})
-    for (q, yq) in enumerate(quad_pts)
-        S   = kernel(xm, yq) * quad_weight(wts, q)
-        col = 3*nearest[q] - 2
-        xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
-        acc = acc + S * xv
+    for (rng, ε) in regions
+        for q in rng
+            S   = kernel(xm, @inbounds(quad_pts[q]), ε) * quad_weight(wts, q)
+            col = 3*(@inbounds nearest[q]) - 2
+            xv  = SVector{3,T}(x[col], x[col+1], x[col+2])
+            acc = acc + S * xv
+        end
     end
     acc = acc * invfactor
     @inbounds for a in 1:3
@@ -455,31 +490,35 @@ end
 end
 
 mul_swimming!(y, x, x0, disc::NearestDiscretisation, kernel; μ=one(eltype(y))) =
-    mul_swimming!(y, x, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel; μ=μ)
+    mul_swimming!(y, x, x0, disc.force_pts, disc.quad_pts, disc.nearest, disc.quad_wts, kernel;
+                  μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
 mul_swimming!(y, x, x0, disc::NystromDiscretisation, kernel; μ=one(eltype(y))) =
-    mul_swimming!(y, x, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel; μ=μ)
+    mul_swimming!(y, x, x0, disc.force_pts, disc.force_pts, 1:nf(disc), nothing, kernel;
+                  μ=μ, ranges=disc.quad_part_ranges, quad_eps=disc.quad_eps)
 
 mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
-              force_pts, quad_pts, nearest, kernel; μ=one(eltype(y))) =
-    mul_swimming!(y, x, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ)
+              force_pts, quad_pts, nearest, kernel; μ=one(eltype(y)), kwargs...) =
+    mul_swimming!(y, x, x0, force_pts, quad_pts, nearest, nothing, kernel; μ=μ, kwargs...)
 
 function mul_swimming!(y::AbstractVector, x::AbstractVector, x0::SVector{3},
-                        force_pts, quad_pts, nearest, wts, kernel; μ=one(eltype(y)))
+                        force_pts, quad_pts, nearest, wts, kernel;
+                        μ=one(eltype(y)), ranges=nothing, quad_eps=nothing)
     T  = eltype(y)
     Nf = length(force_pts)
     N3 = 3Nf
     fill!(y, zero(T))
     invfactor = inv(8π*μ)
+    regions   = eps_regions(ranges, quad_eps, kernel, length(quad_pts))
 
     # BEM block: rows 1:N3, cols 1:N3
     if threaded_assembly(kernel)
         @batch for m in 1:Nf
-            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel, x, invfactor)
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, regions, kernel, x, invfactor)
         end
     else
         for m in 1:Nf
-            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, kernel, x, invfactor)
+            accumulate_row_matvec!(y, 3m - 2, force_pts[m], quad_pts, nearest, wts, regions, kernel, x, invfactor)
         end
     end
 

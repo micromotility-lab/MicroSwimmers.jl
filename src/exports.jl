@@ -3,8 +3,8 @@ export rotation_matrix, rotation_align_to_x
 export hf, hq
 export fibonacci_cylinder, fibonacci_ellipsoid
 export is_inside_ellipsoid
-export spacing
 export unit_tangent, unit_tangent_and_dt
+export arclength, surface_area, ellipsoid_area, npoints_for_spacing
 
 export gather!, gather_part!
 export dense_solve!, assemble_swimming!
@@ -14,6 +14,8 @@ export FluidBoundary, update_boundary!, move_boundary!
 export Frame
 export Discretisation, NearestDiscretisation, NystromDiscretisation
 export nf, nq, total_quad_weight
+export set_eps!, get_eps
+export DEFAULT_HF, DEFAULT_EPS, DEFAULT_HQ_FACTOR
 export supports_quadrature_weights, quadrature_weights!
 export Model, FlagellumModel, CellBodyModel
 export Part, MicroSwimmer, discretise

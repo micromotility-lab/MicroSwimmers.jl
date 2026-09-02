@@ -2,7 +2,7 @@
 
     function small_flagellum_swimmer(; N=10, Q=51)
         model = PlanarFlagellum(1.0, 0.0, 0.3, 0.15, 2π, 2π, 2π, 0.0)
-        f = Part(model, N, Q)
+        f = Part(model, N, Q; eps=0.1)
         MicroSwimmer([f])
     end
 
@@ -10,10 +10,10 @@
         ts = (0.0, 0.05, 0.11, 0.19, 0.27, 0.33, 0.41)
 
         ms_dense = small_flagellum_swimmer()
-        prob_dense = SwimmingProblem(ms_dense; eps=0.1)
+        prob_dense = SwimmingProblem(ms_dense)
 
         ms_hybrid = small_flagellum_swimmer()
-        prob_hybrid = SwimmingProblem(ms_hybrid; eps=0.1, hybrid=true, refactor_interval=3)
+        prob_hybrid = SwimmingProblem(ms_hybrid; hybrid=true, refactor_interval=3)
 
         for t in ts
             update_boundary!(prob_dense, t)
@@ -33,7 +33,7 @@
 
     @testset "force/torque-free invariant holds under hybrid solve" begin
         ms = small_flagellum_swimmer()
-        prob = SwimmingProblem(ms; eps=0.1, hybrid=true, refactor_interval=3)
+        prob = SwimmingProblem(ms; hybrid=true, refactor_interval=3)
         for t in (0.0, 0.09, 0.17, 0.23, 0.31, 0.4, 0.5)
             update_boundary!(prob, t)
             solve_problem!(prob)
@@ -52,7 +52,7 @@
         # An unreachable reltol combined with a single allowed iteration guarantees GMRES
         # can never report convergence, regardless of how good the preconditioner is —
         # this isolates the fallback-on-failure path from geometry-drift specifics.
-        prob = SwimmingProblem(ms; eps=0.1, hybrid=true, refactor_interval=1000,
+        prob = SwimmingProblem(ms; hybrid=true, refactor_interval=1000,
             gmres_maxiters=1, gmres_reltol=1e-14)
         update_boundary!(prob, 0.0)
         solve_problem!(prob)                      # first solve: always dense
@@ -69,7 +69,7 @@
 
     @testset "SwimmingTrajectoryProblem runs end-to-end with hybrid=true" begin
         ms = small_flagellum_swimmer()
-        tprob = SwimmingTrajectoryProblem(ms; t_final=0.2, saveat=0.02, eps=0.1,
+        tprob = SwimmingTrajectoryProblem(ms; t_final=0.2, saveat=0.02,
             hybrid=true, refactor_interval=4)
         solve_problem!(tprob)
         @test !isnothing(tprob.traj)

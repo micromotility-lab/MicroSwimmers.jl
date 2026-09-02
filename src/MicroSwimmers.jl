@@ -29,6 +29,7 @@ function __init__()
     haskey(ENV, "KMP_BLOCKTIME") || (ENV["KMP_BLOCKTIME"] = "0")
 end
 
+include("defaults.jl")
 include("maths.jl")
 include("geometry.jl")
 include("frame.jl")

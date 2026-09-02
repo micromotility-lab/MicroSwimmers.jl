@@ -1,6 +1,15 @@
 abstract type Model end
 abstract type CellBodyModel <: Model end
 
+# Characteristic size, used to turn a target point spacing into a point count. Only models
+# that define one of these can size their own discretisation; the rest have to be given N and Q.
+_no_size(m, what) = throw(ArgumentError(
+    "$(typeof(m)) does not define $what, so it cannot size its own discretisation. " *
+    "Pass N and Q explicitly, as `Part(model, N, Q)`."))
+
+surface_area(m::Model) = _no_size(m, "surface_area")
+arclength(m::Model)    = _no_size(m, "arclength")
+
 function (m::CellBodyModel)(disc::NearestDiscretisation)
       T = eltype(eltype(disc.force_pts))
       m(disc.force_pts, disc.velocity)
@@ -36,6 +45,8 @@ end
 
 (m::EllipsoidBody)(N::Int; pts_fn=fibonacci_ellipsoid) = pts_fn(m.a, m.b, m.c, N)
 
+surface_area(m::EllipsoidBody) = ellipsoid_area(m.a, m.b, m.c)
+
 
 function (m::EllipsoidBody)(points::Vector{SVector{3,T}}) where {T <: Number}
     points .= m(length(points))
@@ -57,6 +68,11 @@ mutable struct EllipsoidalGroovedBody{T <: Number} <: CellBodyModel
     groove_center::Vector{T}
     orientation::SMatrix{3,3,T,9}
 end
+
+# The groove only removes area, and N, Q are sampling budgets rather than final point counts
+# for this model anyway (see SampledBodyModel), so the ungrooved ellipsoid is close enough to
+# size a budget from.
+surface_area(m::EllipsoidalGroovedBody) = ellipsoid_area(m.a, m.b, m.c)
 
 EllipsoidalGroovedBody(a::T, b::T, c::T, groove_center::Vector{T}; orientation=SMatrix{3,3,T,9}(I)) where {T <: Number} = EllipsoidalGroovedBody(
     a, b, c,

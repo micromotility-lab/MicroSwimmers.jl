@@ -7,9 +7,9 @@
     # as resolution increases, rather than pinning a single fixed tolerance.
 
     function sphere_problem(a, N, Q; eps)
-        body = Part(EllipsoidBody(a, a, a), N, Q)
+        body = Part(EllipsoidBody(a, a, a), N, Q; eps=eps)
         ms = MicroSwimmer([body])
-        prob = ResistanceProblem(ms; eps=eps)
+        prob = ResistanceProblem(ms)
         prob, body
     end
 
@@ -53,9 +53,9 @@
 
     @testset "grand_resistance_matrix on a sphere" begin
         a = 1.0
-        body = Part(EllipsoidBody(a, a, a), 60, 250)
+        body = Part(EllipsoidBody(a, a, a), 60, 250; eps=0.04)
         ms = MicroSwimmer([body])
-        R = grand_resistance_matrix(ms; eps=0.04)
+        R = grand_resistance_matrix(ms)
 
         trans_drag = 6π * a
         rot_drag   = 8π * a^3

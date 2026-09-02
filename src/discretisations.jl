@@ -1,13 +1,20 @@
 abstract type Discretisation end
 
-struct NystromDiscretisation{T <: Number} <: Discretisation
+mutable struct NystromDiscretisation{T <: Number} <: Discretisation
     force_pts::Vector{SVector{3,T}}
     velocity::Vector{SVector{3,T}}
+    # Collocation puts the quadrature points on the force points, so one partition serves both
+    # and `quad_eps[j]` regularises every point in `quad_part_ranges[j]` — the same invariant
+    # NearestDiscretisation carries.
+    quad_eps::Vector{T}
+    quad_part_ranges::Vector{UnitRange{Int}}
 end
 
 NystromDiscretisation(N::Int) = NystromDiscretisation(
     Vector{SVector{3,Float64}}(undef, N),
-    Vector{SVector{3,Float64}}(undef, N)
+    Vector{SVector{3,Float64}}(undef, N),
+    [DEFAULT_EPS],
+    [1:N]
 )
 
 nf(disc::NystromDiscretisation) = length(disc.force_pts)
@@ -118,6 +125,10 @@ mutable struct NearestDiscretisation{T <: Number} <: Discretisation
     # quadrature points are near-uniformly spaced, which is what the Fibonacci and
     # arclength samplers produce; ray-marched clouds need the explicit weights.
     quad_wts::Union{Nothing, Vector{T}}
+    # Regularisation parameter, one per region rather than one per quadrature point: eps is
+    # constant over a region, so this stays a handful of floats however fine the quadrature
+    # gets, and assembly hoists it into a register instead of reloading it per point.
+    quad_eps::Vector{T}
     force_part_ranges::Vector{UnitRange{Int}}
     quad_part_ranges::Vector{UnitRange{Int}}
 end
@@ -148,6 +159,7 @@ function NearestDiscretisation(nf_sizes::AbstractVector{<:Integer},
         Vector{SVector{3,Float64}}(undef, Q),
         zeros(Int, Q),
         nothing,
+        fill(DEFAULT_EPS, length(nq_sizes)),
         ranges_from_sizes(nf_sizes),
         ranges_from_sizes(nq_sizes),
     )
@@ -162,6 +174,7 @@ NearestDiscretisation() = NearestDiscretisation(
     SVector{3,Float64}[],
     Int[],
     nothing,
+    Float64[],
     UnitRange{Int}[],
     UnitRange{Int}[],
 )
@@ -201,6 +214,28 @@ total_quad_weight(disc::NearestDiscretisation) =
 
 total_quad_weight(disc::NearestDiscretisation, i::Int) =
     isnothing(disc.quad_wts) ? float(nq(disc, i)) : sum(@view disc.quad_wts[disc.quad_part_ranges[i]])
+
+# Regularisation parameter, set per region. A scalar applies to the whole discretisation; a
+# collection sets one region each, which is how a PlanarVanedFlagellum gives its filament a
+# radius and its vane a thickness.
+function set_eps!(disc::Discretisation, ε::Real)
+    resize!(disc.quad_eps, length(disc.quad_part_ranges))
+    fill!(disc.quad_eps, ε)
+    disc
+end
+
+function set_eps!(disc::Discretisation, εs)
+    n = length(disc.quad_part_ranges)
+    length(εs) == n || throw(ArgumentError(
+        "expected $n regularisation parameters, one per region of this discretisation, " *
+        "got $(length(εs)); pass a scalar to set them all"))
+    resize!(disc.quad_eps, n)
+    disc.quad_eps .= εs
+    disc
+end
+
+# scalar when the whole discretisation shares one value, otherwise the per-region vector
+get_eps(disc::Discretisation) = allequal(disc.quad_eps) ? first(disc.quad_eps) : copy(disc.quad_eps)
 
 # spacing between force points
 function hf(disc::NearestDiscretisation)

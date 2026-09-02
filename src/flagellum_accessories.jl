@@ -33,6 +33,10 @@ end
 
 PlanarVanedFlagellum(m::FlagellumModel, s_start, s_end, H) = PlanarVanedFlagellum(m, Vane(-ez, Float64(s_start), Float64(s_end), Float64(H)))
 
+# The vane's own point counts are derived from the flagellum's (see make_discretisation), so
+# sizing the flagellum sizes the whole model.
+arclength(m::PlanarVanedFlagellum) = arclength(m.flagellum)
+
 # assumes flagellum points are already stored in the first 1:N_flagellum elements of points
 function (v::Vane)(points::Vector{SVector{3,T}}, N_flagellum, L, include_endpoints) where {T <: Number}
     start  = nearest_index(v.s_start, N_flagellum, include_endpoints)

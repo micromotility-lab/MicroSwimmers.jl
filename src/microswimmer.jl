@@ -24,7 +24,13 @@ function check_weighted(model::Model, weighted::Bool)
     weighted
 end
 
-function discretise(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3, weighted=false)
+function discretise(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3,
+                    weighted=false, eps=DEFAULT_EPS)
+    Part(model, N, Q; location=location, orientation=orientation, weighted=weighted, eps=eps)
+end
+
+function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3,
+              weighted=false, eps=DEFAULT_EPS)
     check_weighted(model, weighted)
     part = Part(
         model,
@@ -33,20 +39,54 @@ function discretise(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float6
     )
     init_boundary!(part, N, Q; weighted=weighted)
     nearest_neighbour!(part.disc)
+    # after init_boundary!: sampled models only settle their region partition once the cloud
+    # has been sampled, and set_eps! needs one value per region
+    set_eps!(part.disc, eps)
     part
 end
 
-function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3, weighted=false)
-    check_weighted(model, weighted)
-    part = Part(
-        model,
-        make_discretisation(model, N, Q),
-        Frame(SVector{3,Float64}(location), SMatrix{3,3,Float64,9}(orientation))
-    )
-    init_boundary!(part, N, Q; weighted=weighted)
-    nearest_neighbour!(part.disc)
-    part
+# Model-only form: size the discretisation from physical targets rather than making the caller
+# invent N and Q. See src/defaults.jl for where the numbers come from.
+#
+# Two separate constraints set hq, and the binding one depends on eps. The quadrature has to
+# resolve the blob (hq ≲ 2*eps), and it has to put several points in each force patch, or the
+# piecewise-constant traction is not integrated at all — hence the hf/2 ceiling, which is what
+# keeps Q ≥ 4N once eps grows past hf/4.
+default_hq(hf, eps) = min(DEFAULT_HQ_FACTOR*minimum(eps), hf/2)
+
+function Part(model::Model; hf=DEFAULT_HF, eps=DEFAULT_EPS, hq=default_hq(hf, eps), kwargs...)
+    N = npoints_for_spacing(model, hf, false)
+    Q = npoints_for_spacing(model, hq, true)
+    check_default_sizing(model, N, Q, hf, hq, eps)
+    Part(model, N, Q; eps=eps, kwargs...)
 end
+
+discretise(model::Model; kwargs...) = Part(model; kwargs...)
+
+# The defaults are in microns, so they are wrong by orders of magnitude for a non-dimensional
+# model — which is what most of the test suite uses. Say so rather than silently returning a
+# two-point flagellum or a cloud that takes minutes to relax.
+function check_default_sizing(model, N, Q, hf, hq, eps)
+    N < 8 && @warn "Part($(nameof(typeof(model)))) sized to only N=$N force points at hf=$hf. " *
+                   "The defaults assume microns; pass `hf` explicitly for a non-dimensional model." maxlog=1
+    Q > 200_000 && @warn "Part($(nameof(typeof(model)))) needs Q=$Q quadrature points at hq=$hq. " *
+                         "Raising `eps` above $eps would cut this quadratically." maxlog=1
+    nothing
+end
+
+# Force points use the open rule (hf = L/(N+1)) and quadrature points the closed one
+# (hq = L/(Q-1)) — see get_s0_and_ds in flagellum_models.jl.
+npoints_for_spacing(m::FlagellumModel, h, include_endpoints) =
+    include_endpoints ? max(round(Int, arclength(m)/h) + 1, 3) :
+                        max(round(Int, arclength(m)/h) - 1, 2)
+
+# Everything else is a surface. Its samplers spread N points over the whole area, so
+# h = sqrt(area/N) — the same convention relax_cloud! uses to pick its target spacing. A model
+# with no surface_area gets a clear error from that function's fallback.
+npoints_for_spacing(m::Model, h, _) = max(ceil(Int, surface_area(m) / h^2), 8)
+
+set_eps!(p::Part, ε) = (set_eps!(p.disc, ε); p)
+get_eps(p::Part)     = get_eps(p.disc)
 
 function add_rigid_body_motion!(part::Part, U, Ω)
     part.disc.velocity .= Ref(SVector{3}(U)) .+ cross.(Ref(SVector{3}(Ω)), part.disc.force_pts)
@@ -104,7 +144,7 @@ update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> upda
 
 add_rigid_body_motion!!(ms::MicroSwimmer, U, Ω) = foreach(p -> add_rigid_body_motion!(p, U, Ω), ms.parts)
 
-function grand_resistance_matrix(ms::MicroSwimmer; eps=0.1, alg=LUFactorization())
+function grand_resistance_matrix(ms::MicroSwimmer; eps=nothing, alg=LUFactorization())
     R = zeros(6,6)
 
     for (i, n) in enumerate([ex, ey, ez])
