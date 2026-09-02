@@ -142,20 +142,20 @@ MicroSwimmer(parts::Vector{P}; location=zero(SVector{3}), orientation=I3) where 
 
 update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> update_boundary!(p, t), ms.parts)
 
-add_rigid_body_motion!!(ms::MicroSwimmer, U, Ω) = foreach(p -> add_rigid_body_motion!(p, U, Ω), ms.parts)
+add_rigid_body_motion!(ms::MicroSwimmer, U, Ω) = foreach(p -> add_rigid_body_motion!(p, U, Ω), ms.parts)
 
 function grand_resistance_matrix(ms::MicroSwimmer; eps=nothing, alg=LUFactorization())
     R = zeros(6,6)
 
     for (i, n) in enumerate([ex, ey, ez])
         prob = ResistanceProblem(ms, eps=eps, alg=alg)
-        [add_rigid_body_motion!(part, n, zero(SVector{3,Float64})) for part in prob.microswimmer.parts]
+        add_rigid_body_motion!(prob.microswimmer, n, zero(SVector{3,Float64}))
         solve_problem!(prob)
         F, T = total_force_and_torque(prob)
         R[1:3, i] .= F
         R[4:6, i] .= T
         
-        [add_rigid_body_motion!(part, zero(SVector{3,Float64}), n) for part in prob.microswimmer.parts]
+        add_rigid_body_motion!(prob.microswimmer, zero(SVector{3,Float64}), n)
         solve_problem!(prob)
         F, T = total_force_and_torque(prob)
         R[1:3, 3+i] .= F
