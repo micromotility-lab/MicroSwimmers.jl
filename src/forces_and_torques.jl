@@ -104,7 +104,6 @@ function force_and_torque_shear(ms::MicroSwimmer; eps=nothing)
         add_rigid_body_motion!!(prob.microswimmer, zero(SVector{3,Float64}), n)
         solve_problem!(prob)
         Gamma[3+i,:,:] = stresslet_tensor(prob)
-        #symmetry and traceless of the rate of strain means that we can make shear tensor symmetric and traceless too
     end
     Gamma
 end
