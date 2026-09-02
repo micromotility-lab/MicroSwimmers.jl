@@ -95,7 +95,7 @@ end
 
 function force_and_torque_shear(ms::MicroSwimmer; eps=nothing)
     Gamma = zeros(6,3,3)
-    prob = ResistanceProblem(ms; eps=eps)
+    prob = ResistanceProblem(ms)
     for (i, n) in enumerate([ex, ey, ez]) 
         add_rigid_body_motion!!(prob.microswimmer, n, zero(SVector{3,Float64}))
         solve_problem!(prob)
