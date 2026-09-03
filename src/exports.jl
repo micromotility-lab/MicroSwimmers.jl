@@ -34,6 +34,10 @@ export PlanarStandingWaveFlagellum, ThreeDimensionalStandingWaveFlagellum
 
 export Vane, PlanarVanedFlagellum, nearest_index, Nh
 
+# Tube flagella
+export TubeFlagellum, LineTubeFlagellum, SurfaceTubeFlagellum
+export DEFAULT_Q_CS, DEFAULT_N_CS
+
 # Kernels
 export RegStokeslet, regularised_stokeslet!, regularised_blakelet!
 export assemble!, assemble_swimming!, mul_swimming!

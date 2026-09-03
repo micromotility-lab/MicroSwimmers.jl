@@ -97,11 +97,11 @@ function force_and_torque_shear(ms::MicroSwimmer; eps=nothing)
     Gamma = zeros(6,3,3)
     prob = ResistanceProblem(ms)
     for (i, n) in enumerate([ex, ey, ez]) 
-        add_rigid_body_motion!!(prob.microswimmer, n, zero(SVector{3,Float64}))
+        add_rigid_body_motion!(prob.microswimmer, n, zero(SVector{3,Float64}))
         solve_problem!(prob)
         Gamma[i,:,:] = stresslet_tensor(prob)
     
-        add_rigid_body_motion!!(prob.microswimmer, zero(SVector{3,Float64}), n)
+        add_rigid_body_motion!(prob.microswimmer, zero(SVector{3,Float64}), n)
         solve_problem!(prob)
         Gamma[3+i,:,:] = stresslet_tensor(prob)
     end

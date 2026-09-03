@@ -22,6 +22,10 @@ abstract type FlagellumModel <: Model end
 
 # Every FlagellumModel parameterises its centreline by fractional arclength s ∈ [0,1] and
 # carries the total length as `L`, so this is exact rather than an estimate.
+#
+# The integrator below reads the length through this accessor rather than `m.L` directly, so a
+# wrapper model with no `L` field of its own — a vane, a tube — only has to forward `arclength`
+# to be integrable. For every model that does have the field the two are the same value.
 arclength(m::FlagellumModel) = m.L
 
 # Starting station and step for the cumulative trapezoid.
@@ -37,7 +41,7 @@ end
                                        include_endpoints::Bool) where {T <: Number}
     N = length(points)
     s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
-    half_L_ds  = T(0.5) * m.L * ds
+    half_L_ds  = T(0.5) * arclength(m) * ds
 
     τ_prev = unit_tangent(s_prev, t, m)
 
@@ -64,7 +68,7 @@ end
                                        include_endpoints::Bool) where {T <: Number}
     N = length(points)
     s_prev, ds = get_s0_and_ds(T, N, include_endpoints)
-    half_L_ds  = T(0.5) * m.L * ds
+    half_L_ds  = T(0.5) * arclength(m) * ds
 
     τ_prev, τdot_prev = unit_tangent_and_dt(s_prev, t, m)
 
@@ -143,7 +147,7 @@ end
 @inline function unit_tangent_and_dt(s::T, t::T, m::PlanarFlagellum) where {T <: Number}
     A = m.R₀ + m.R₁*sin(m.k*s)
     φ = m.ω*t - m.ϕ*s + m.δ
-    θ, θdot = m.C*s + A*cos(φ),  -m.ω*A*sin(φ) 
+    θ, θdot = m.C*s + A*cos(φ), -m.ω*A*sin(φ) 
     (SVector(cos(θ), sin(θ), zero(T)), θdot * SVector(-sin(θ), cos(θ), zero(T)))
 end
 

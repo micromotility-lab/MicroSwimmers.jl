@@ -13,3 +13,17 @@
 const DEFAULT_HF        = 0.5    # target force-point spacing, μm
 const DEFAULT_EPS       = 0.05   # regularisation parameter, μm
 const DEFAULT_HQ_FACTOR = 2.0    # hq = DEFAULT_HQ_FACTOR * eps
+
+# Cross-section point counts for the tube flagella (src/flagellum_tubes.jl).
+#
+# A quadrature ring is a periodic trapezoid rule over a smooth periodic integrand: the
+# collocation point sits at distance exactly `radius` from every point of its own ring, so
+# there is no near-singularity to resolve and convergence is spectral. This is NOT the
+# 2*pi*a/eps that resolving a blob on the ring would cost.
+#
+# Measured on a curved filament (L=10, a=0.1, N=61), relative error in the translating drag
+# against a Q_cs=48 reference: Q_cs=4 -> 8e-6, 6 -> 5e-9, 8 -> 3e-12, 12 -> machine precision.
+# 12 is past converged and cheap, so it is the default. Do not read that off a *straight*
+# filament: there all the rings are congruent and the symmetry makes Q_cs=4 exact.
+const DEFAULT_Q_CS = 12   # quadrature points per cross-section
+const DEFAULT_N_CS = 8    # force points per cross-section (SurfaceTubeFlagellum only)

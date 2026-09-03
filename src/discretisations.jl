@@ -261,102 +261,6 @@ function hq(disc::NearestDiscretisation)
     (minimum(dnn), median(dnn), maximum(dnn))
 end
 
-# # Forward unknown properties to `points`
-# @inline function Base.getproperty(f::VanedFlagellumNearestDiscretisation, name::Symbol)
-#     name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? getfield(f, name) : getproperty(f.points, name)  
-# end
-
-# @inline function Base.setproperty!(f::VanedFlagellumNearestDiscretisation, name::Symbol, value)
-#     name in (:points, :N_f, :Q_f, :N_v, :N_start, :N_height, :Q_v, :Q_start, :Q_height) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
-# end
-
-# function VanedFlagellumNearestDiscretisation(
-#     N_f::Int,
-#     Q_f::Int, 
-#     N_v::Int, 
-#     N_start::Int, 
-#     N_height::Int; 
-#     location=SVector(0.,0.,0.), 
-#     orientation=I3
-# ) 
-#     Q_v = floor(Int, (N_v / N_f) * Q_f) 
-#     Q_start = ceil(Int, ((N_start-1) / (N_f-1)) * (Q_f-1))
-#     Q_height = floor(Int, (N_height / N_f) * Q_f)
-
-#     points = NearestDiscretisation(
-#         N_f + N_height*N_v, Q_f + Q_height*Q_v;
-#         location=location, orientation=orientation
-#     )
-
-#     VanedFlagellumNearestDiscretisation(points, N_f, Q_f, N_v, N_start, N_height, Q_v, Q_start, Q_height)
-# end
-
-
-struct TubeFlagellumNearestDiscretisation{T <: Number} <: Discretisation
-    points::NearestDiscretisation
-
-    N_cs::Int  # Number of cross section force points on the tube
-    Q_cs::Int  # Number of cross section quadrature points on the tube
-    radius::T  # cross-sectional radius of the tube
-end
-
-# Forward unknown properties to `points`
-@inline function Base.getproperty(f::TubeFlagellumNearestDiscretisation, name::Symbol)
-    name in (:points, :N_cs, :Q_cs, :radius) ? getfield(f, name) : getproperty(f.points, name)  
-end
-
-@inline function Base.setproperty!(f::TubeFlagellumNearestDiscretisation, name::Symbol, value)
-    name in (:points, :N_cs, :Q_cs, :radius) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
-end
-
-
-function TubeFlagellumNearestDiscretisation(
-    N::Int,
-    N_cs::Int, 
-    Q::Int, 
-    Q_cs::Int; 
-    location=SVector(0.,0.,0.), 
-    orientation=I3,
-    radius=0.01
-)
-
-    points = NearestDiscretisation(N*N_cs, Q*Q_cs, location=location, orientation=orientation)
-    TubeFlagellumNearestDiscretisation(points, N_cs, Q_cs, radius)
-end
-
-
-struct LineTubeFlagellumNearestDiscretisation{T <: Number} <: Discretisation
-    points::NearestDiscretisation
-
-    Q_cs::Int  # Number of cross section quadrature points on the tube
-    radius::T  # cross-sectional radius of the tube
-end
-
-# Forward unknown properties to `points`
-@inline function Base.getproperty(f::LineTubeFlagellumNearestDiscretisation, name::Symbol)
-    name in (:points, :Q_cs, :radius) ? getfield(f, name) : getproperty(f.points, name)  
-end
-
-@inline function Base.setproperty!(f::LineTubeFlagellumNearestDiscretisation, name::Symbol, value)
-    name in (:points, :Q_cs, :radius) ? setfield!(f, name, value) : setproperty!(f.points, name, value)
-end
-
-
-function LineTubeFlagellumNearestDiscretisation(
-    N::Int, 
-    Q::Int, 
-    Q_cs::Int; 
-    location=SVector(0.,0.,0.), 
-    orientation=I3,
-    radius=0.01
-)
-    points = NearestDiscretisation(N, Q*Q_cs, location=location, orientation=orientation)
-    LineTubeFlagellumNearestDiscretisation(points, Q_cs, radius)
-end
-
-
-
-
 function nearest_neighbour(force_pts::AbstractMatrix{T}, quad_pts::AbstractMatrix{T}) where {T <: Number}
     nearest = Int[]
     for x in eachcol(quad_pts)
@@ -385,8 +289,6 @@ function nearest_neighbour(force_pts::AbstractVector{<:AbstractMatrix{T}}, quad_
     end
     nearest
 end
-
-
 
 function nearest_neighbour!(points::Discretisation)
     points.nearest .= nearest_neighbour(points.force_pts, points.quad_pts)

@@ -32,6 +32,7 @@ end
 function Part(model::Model, N::Int, Q::Int; location=zero(SVector{3,Float64}), orientation=I3,
               weighted=false, eps=DEFAULT_EPS)
     check_weighted(model, weighted)
+    check_tube(model, N, eps)
     part = Part(
         model,
         make_discretisation(model, N, Q),
@@ -105,6 +106,11 @@ function make_discretisation(m::PlanarVanedFlagellum, N, Q)
     Q_v = vane_npoints(m.vane, Q, m.flagellum.L, true)
     NearestDiscretisation([N, N_v], [Q, Q_v])
 end
+# Tubes: N and Q are *station* counts along the centreline, which is exactly what the inherited
+# arclength rule in npoints_for_spacing produces, so `Part(model)` sizes them correctly with no
+# extra method. The cross-section counts come from the model's own fields.
+make_discretisation(m::LineTubeFlagellum, N, Q)    = NearestDiscretisation(N, Q*m.Q_cs)
+make_discretisation(m::SurfaceTubeFlagellum, N, Q) = NearestDiscretisation(N*m.N_cs, Q*m.Q_cs)
 
 
 init_boundary!(part::Part)       = init_boundary!(part.model, part.disc)
