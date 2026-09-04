@@ -1,3 +1,7 @@
+# Implicit body models are experimental and subject to breaking changes. 
+# They are not yet fully integrated into the API, and they do not yet support all features of the other cell body models
+# Use with caution.
+
 abstract type ImplicitBodyModel <: CellBodyModel end
 
 # Can this model supply surface quadrature weights? Ray-marching produces them as a
