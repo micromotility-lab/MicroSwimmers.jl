@@ -49,39 +49,48 @@ end
 function average_swimming_velocity(traj::Trajectory)
     (traj.x[end] - traj.x[1]) / (traj.t[end] - traj.t[1])
 end
+using LinearAlgebra, StaticArrays
+
+# Exact right-handed orthonormal frame from two approximate basis vectors
+function orthonormal_frame(b1::SVector{3}, b2::SVector{3})
+    e1 = normalize(b1)
+    e2 = normalize(b2 - dot(b2, e1) * e1)
+    e3 = cross(e1, e2)
+    hcat(e1, e2, e3)          # SMatrix{3,3}
+end
+orthonormal_frame(M::SMatrix{3,3}) = orthonormal_frame(M[:, 1], M[:, 2])
 
 function continue_periodic_trajectory(traj::Trajectory, N_periods=10)
-    T = eltype(traj.t)
-    new_ts = T[]
-    new_xs = SVector{3,T}[]
-    new_b1s = SVector{3,T}[]
-    new_b2s = SVector{3,T}[]
+    t, x, b1, b2 = traj.t, traj.x, traj.b1, traj.b2
+    n = length(t)
+    period = t[end] - t[1]
 
-    append!(new_ts, traj.t)
-    append!(new_xs, traj.x)
-    append!(new_b1s, traj.b1)
-    append!(new_b2s, traj.b2)
+    # Express one period relative to its own starting position and frame
+    F0 = orthonormal_frame(b1[1], b2[1])
+    dx = [F0' * (xk - x[1]) for xk in x]                          # body-frame displacements
+    R  = [F0' * orthonormal_frame(b1[k], b2[k]) for k in 1:n]     # relative rotations
 
+    new_ts  = copy(t)
+    new_xs  = copy(x)
+    new_b1s = copy(b1)
+    new_b2s = copy(b2)
+
+    xi, Fi = x[1], F0   # position and frame at the start of the current period
     for i in 1:N_periods-1
-        B = hcat(new_b1s[end], new_b2s[end], cross(new_b1s[end], new_b2s[end]))
-        new_t = traj.t .+ traj.t[end]*i
-        new_x = [B * x for x in traj.x] .+ Ref(new_xs[end])
-        # @info "" new_x new_xs[end]
-        new_b1 = [B * b1 for b1 in traj.b1]
-        new_b2 = [B * b2 for b2 in traj.b2]
-        
-        append!(new_ts, new_t[2:end])
-        append!(new_xs, new_x[2:end])
-        append!(new_b1s, new_b1[2:end])
-        append!(new_b2s, new_b2[2:end])
+        # Step to the start of the next period (re-orthonormalise to stop drift)
+        xi = xi + Fi * dx[end]
+        Fi = orthonormal_frame(Fi * R[end])
+
+        for k in 2:n
+            F = Fi * R[k]
+            push!(new_ts,  t[k] + i * period)
+            push!(new_xs,  xi + Fi * dx[k])
+            push!(new_b1s, F[:, 1])
+            push!(new_b2s, F[:, 2])
+        end
     end
-    Trajectory(
-        new_ts,
-        new_xs,
-        new_b1s,
-        new_b2s,
-        true
-    )
+
+    Trajectory(new_ts, new_xs, new_b1s, new_b2s, true)
 end
 
 function running_mean(traj::Trajectory, radius::Int)
