@@ -3,7 +3,7 @@
 function fibonacci_ellipsoid(a::T, b::T, c::T, num_points::Int) where {T <: Number}
     points = Array{T}(undef, 3, num_points)
     phi = (sqrt(5) + 1) / 2 - 1  # Golden ratio minus 1
-    ga = 2π * phi  
+    ga = 2pi * phi  
 
     for i in 0:num_points-1
         theta = ga * i  
@@ -26,25 +26,25 @@ is_inside_ellipsoid(x, center, radii; orientation=I3, tol=1e-8) = sum((orientati
 function fibonacci_cylinder(a::T, b::T, h::T, num_side::Int, num_cap::Int) where {T <: Number}
     # Golden angle
     phi = (sqrt(5) + 1) / 2 - 1
-    ga = 2π * phi
+    ga = 2pi * phi
 
     ### 1. Lateral surface: z ∈ (0, h) ###
     side = Array{T}(undef, 3, num_side)
     for i in 0:num_side - 1
-        θ = ga * i
+        theta = ga * i
         z = h * (i + 0.5) / num_side          # in (0, h)
-        x = a * cos(θ)
-        y = b * sin(θ)
+        x = a * cos(theta)
+        y = b * sin(theta)
         side[:, i+1] = SVector(x, y, z)  # or [x, y, z]
     end
 
     ### 2. Top cap: z = h ###
     top = Array{T}(undef, 3, num_cap)
     for i in 0:num_cap - 1
-        θ = ga * i
+        theta = ga * i
         r = sqrt((i + 0.5) / num_cap)
-        x = a * r * cos(θ)
-        y = b * r * sin(θ)
+        x = a * r * cos(theta)
+        y = b * r * sin(theta)
         z = h
         top[:, i+1] = [x, y, z]
     end
@@ -52,10 +52,10 @@ function fibonacci_cylinder(a::T, b::T, h::T, num_side::Int, num_cap::Int) where
     ### 3. Bottom cap: z = 0 ###
     bottom = Array{T}(undef, 3, num_cap)
     for i in 0:num_cap - 1
-        θ = ga * i
+        theta = ga * i
         r = sqrt((i + 0.5) / num_cap)
-        x = a * r * cos(θ)
-        y = b * r * sin(θ)
+        x = a * r * cos(theta)
+        y = b * r * sin(theta)
         z = zero(T)
         bottom[:, i+1] = [x, y, z]
     end

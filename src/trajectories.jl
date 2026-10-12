@@ -107,19 +107,19 @@ function initial_helix_pars(traj::Trajectory)
     e2_proj = dot.(Ref(e2), traj_centred)
     phase = unwrap(atan.(e2_proj, e1_proj))
     A = [ones(length(traj.t)) traj.t]
-    ψ, ω = A \ phase
+    psi, omega = A \ phase
 
     v = S[ax_ind]*(V[end,ax_ind] - V[1,ax_ind]) / traj.t[end]
-    θ = acos(dot(a, ez)) # clamp(a[3], -1.0, 1.0))
-    ϕ = sign(a[2])*acos(clamp(a[ax_ind]/(a[ax_ind]^2 + a[2]^2), -1.0, 1.0))
+    theta = acos(dot(a, ez)) # clamp(a[3], -1.0, 1.0))
+    phi = sign(a[2])*acos(clamp(a[ax_ind]/(a[ax_ind]^2 + a[2]^2), -1.0, 1.0))
     r = S[2]*(maximum(V[:,2]) - minimum(V[:,2])) / 2
-    [X0..., v, ω, θ, ϕ, r, ψ]
+    [X0..., v, omega, theta, phi, r, psi]
 end
 
 """
 Fit a helix of the form:
 
-X(t) = [x0,y0,z0] + [sinθcosϕ, sinθsinϕ, cosθ]*v*t + r(cos(ωt + ψ)*e1 + sin(ωt + ψ)*e2)
+X(t) = [x0,y0,z0] + [sin(theta)cos(phi), sin(theta)sin(phi), cos(theta)]*v*t + r(cos(omega*t + psi)*e1 + sin(omega*t + psi)*e2)
 
 where e1 and e2 form an orthonormal basis with the helical axis
 """

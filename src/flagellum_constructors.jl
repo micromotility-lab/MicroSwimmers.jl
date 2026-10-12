@@ -11,7 +11,7 @@ end
 
 # Provide N and Q for the nearest discretisation
 function Flagellum(
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2pi, 2pi, 2pi, 0.0),
     N::Int=23, 
     Q::Int=127; 
     location=SVector(0., 0., 0.),
@@ -43,7 +43,7 @@ struct VanedFlagellum{M <: FlagellumModel, D <: Discretisation} <: Flagellum
 end
 
 function VanedFlagellum(
-    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2π, 2π, 2π, 0.0),
+    model=PlanarFlagellum(1., 0., 0.3, 0.15, 2pi, 2pi, 2pi, 0.0),
     N_f=23, 
     Q_f=127,
     N_v=10,

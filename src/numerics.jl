@@ -53,7 +53,7 @@ function regularised_blakelet!(B, T, x, X; eps=1e-6)
     iR5  = iR^5
 
     # Convenient matrices
-    Δ = @SMatrix [1.0 0.0 0.0;
+    Delta = @SMatrix [1.0 0.0 0.0;
                   0.0 1.0 0.0;
                   0.0 0.0 -1.0]
 
@@ -68,16 +68,16 @@ function regularised_blakelet!(B, T, x, X; eps=1e-6)
 
     # -------- higher order terms (Smith) --------
 
-    # Blob term: BT = -2 h^2 * kron(Δ, phi)  with phi = 3 eps^2 iR^5
+    # Blob term: BT = -2 h^2 * kron(Delta, phi)  with phi = 3 eps^2 iR^5
     phi = 3 * eps^2 * iR5
-    B .+= (-2h^2 * phi) .* Δ
+    B .+= (-2h^2 * phi) .* Delta
 
     # Potential source dipole:
-    # PD = 2 h^2 * ( Δ*iR3 - 3*iR5*P )
-    B .+= (2h^2) .* (iR3 .* Δ .- 3*iR5 .* P)
+    # PD = 2 h^2 * ( Delta*iR3 - 3*iR5*P )
+    B .+= (2h^2) .* (iR3 .* Delta .- 3*iR5 .* P)
 
     # Regularised stokes dipole:
-    # SD = 2 h * ( A - Δ*(X3*iR3) + C + 3*iR5*X3*P )
+    # SD = 2 h * ( A - Delta*(X3*iR3) + C + 3*iR5*X3*P )
     #
     # A: only row 3 nonzero
     val = Rsq + 4eps^2
@@ -88,8 +88,8 @@ function regularised_blakelet!(B, T, x, X; eps=1e-6)
                   0.0 0.0 0.0;
                   a1  a2  a3]
 
-    # -Δ*(X3*iR3)  (scalar times Δ)
-    Dterm = (X3 * iR3) .* Δ
+    # -Delta*(X3*iR3)  (scalar times Delta)
+    Dterm = (X3 * iR3) .* Delta
 
     # C: only column 3 nonzero  (THIS is what your Julia version was missing)
     C = @SMatrix [0.0 0.0 X1*iR3;
@@ -116,7 +116,7 @@ function resistance_matrix!(
     quad_pts::AbstractMatrix{T},
     nearest::AbstractVector{Int},
     eps::T;
-    μ::T=one(T),
+    mu::T=one(T),
     wall::Bool=false
 ) where {T <: Number}
     fill!(A, zero(T))
@@ -143,7 +143,7 @@ function resistance_matrix!(
             end
         end
     end
-    A ./= (-T(8) * T(π) * μ)
+    A ./= (-T(8) * T(pi) * mu)
 end
 
 # if force_pts is a single point, promote to a matrix and then call resistance_matrix!
@@ -153,10 +153,10 @@ function resistance_matrix!(
     quad_pts::AbstractMatrix{T},
     nearest::AbstractVector{Int},
     eps::T;
-    μ::T=one(T),
+    mu::T=one(T),
     wall::Bool=false
 ) where {T <: Number}   
-    resistance_matrix!(A, reshape(force_pts, 3, 1), quad_pts, nearest, eps; μ=μ, wall=wall)
+    resistance_matrix!(A, reshape(force_pts, 3, 1), quad_pts, nearest, eps; mu=mu, wall=wall)
 end
 
 function swimming_matrix!(
@@ -166,7 +166,7 @@ function swimming_matrix!(
     quad_pts::Matrix{T}, 
     nearest::Vector{Int}, 
     eps::T; 
-    μ::T=one(T),
+    mu::T=one(T),
     wall::Bool=false
 ) where {T <: Number}
     fill!(A, zero(T))
@@ -204,7 +204,7 @@ function swimming_matrix!(
     end
 
     nf = length(force_pts)
-    @inbounds A[1:nf, 1:nf] ./= (-T(8) * T(π) * μ)
+    @inbounds A[1:nf, 1:nf] ./= (-T(8) * T(pi) * mu)
     
     for j in axes(quad_pts, 2)
         n = nearest[j]
@@ -227,9 +227,9 @@ function swimming_matrix!(
     x0::SVector{3,T}, 
     points::NearestDiscretisation,
     eps::T; 
-    μ::T=one(T),
+    mu::T=one(T),
     wall::Bool=false
 ) where {T <: Number}
     @unpack force_pts, quad_pts, nearest = points
-    swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; μ=μ, wall=wall)
+    swimming_matrix!(A, x0, force_pts, quad_pts, nearest, eps; mu=mu, wall=wall)
 end

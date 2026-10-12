@@ -19,14 +19,14 @@ function FluidVelocity(prob::InstantaneousProblem)
         prob.points.nearest,
         prob.eps,
         prob.mu,
-        prob.force_vals[1:N], # leave out U and Ω for SwimmingProblem
+        prob.force_vals[1:N], # leave out U and Omega for SwimmingProblem
         A,
         prob.wall
     )
 end
 
 function (fv::FluidVelocity)(x)
-    resistance_matrix!(fv.A, x, fv.quad_pts, fv.nearest, fv.eps; μ=fv.mu, wall=fv.wall)
+    resistance_matrix!(fv.A, x, fv.quad_pts, fv.nearest, fv.eps; mu=fv.mu, wall=fv.wall)
     SVector{3}(fv.A * fv.force_vals)     
 end
 
@@ -99,23 +99,23 @@ function velocity_flux(u, z_bot, z_top, y_min, y_max; x=0., N=20)
     sum(w1*w2*u([x, yi, z(yi, si)])[1] for (yi, w1) in zip(ys, wys), (si, w2) in zip(ss, wss))
 end
 
-function velocity_flux_polar(u, x, y0, z0, R; Nr=20, Nθ=20)
+function velocity_flux_polar(u, x, y0, z0, R; Nr=20, Ntheta=20)
     rs_raw, wrs = gausslegendre(Nr)
-    θs_raw, wθs = gausslegendre(Nθ)
+    thetas_raw, wthetas = gausslegendre(Ntheta)
 
     # Affine transforms
     rs = 0.5 * R * (rs_raw .+ 1)  # r ∈ [0, R]
     wrs .= 0.5 * R * wrs          # Jacobian for r
 
-    θs = π * (θs_raw .+ 1)        # θ ∈ [0, 2π]
-    wθs .= π * wθs                # Jacobian for θ
+    thetas = pi * (thetas_raw .+ 1)        # theta ∈ [0, 2pi]
+    wthetas .= pi * wthetas                # Jacobian for theta
 
     total_flux = 0.0
-    for (r, wr) in zip(rs, wrs), (θ, wθ) in zip(θs, wθs)
-        y = y0 + r * cos(θ)
-        z = z0 + r * sin(θ)
+    for (r, wr) in zip(rs, wrs), (theta, wtheta) in zip(thetas, wthetas)
+        y = y0 + r * cos(theta)
+        z = z0 + r * sin(theta)
         vel = u([x, y, z])
-        total_flux += vel[1] * r * wr * wθ  # extra r from polar area element
+        total_flux += vel[1] * r * wr * wtheta  # extra r from polar area element
     end
 
     total_flux

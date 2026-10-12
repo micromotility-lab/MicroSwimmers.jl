@@ -23,7 +23,7 @@ export discretisation, NearestDiscretisation
 
 
 # Problems
-export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Ω, get_force_pts, get_forces, get_velocities, get_quad_pt_velocities
+export SwimmingProblem, SwimmingTrajectoryProblem, get_U, get_Omega, get_force_pts, get_forces, get_velocities, get_quad_pt_velocities
 export ResistanceProblem, ParticleTrajectoryProblem
 export solve_problem!
 export translate_problem!, rotate_problem!

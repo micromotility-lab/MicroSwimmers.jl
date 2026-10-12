@@ -98,7 +98,7 @@ function get_U(prob::SwimmingProblem)
     SVector{3}(prob.force_vals[end-5:end-3])
 end
 
-function get_Ω(prob::SwimmingProblem)
+function get_Omega(prob::SwimmingProblem)
     check_solved!(prob)
     SVector{3}(prob.force_vals[end-2:end])
 end
@@ -112,9 +112,9 @@ end
 # Get the total velocity including rigid body dynamics at the force points
 function get_velocities(prob::SwimmingProblem)
     U = get_U(prob)
-    Ω = get_Ω(prob)
+    Omega = get_Omega(prob)
     
-    [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Ω), get_force_pts(prob) .- Ref(prob.points.location))
+    [U + SVector{3}(vel) for vel in eachcol(prob.points.velocity)] .+ cross.(Ref(Omega), get_force_pts(prob) .- Ref(prob.points.location))
 end
 
 # Get the total velocity including rigid body dynamics at the quad points
@@ -135,10 +135,10 @@ function get_quad_pt_velocities(prob::SwimmingProblem; t=0.0)
 
     x0 = prob.microswimmer.points.location
     U = get_U(prob)
-    Ω = get_Ω(prob)
+    Omega = get_Omega(prob)
 
     vs = [SVector{3}(v) for v in eachcol(vs)]
-    rigid_body_vel = Ref(U) .+ cross.(Ref(Ω), eachcol(pts) .- Ref(x0))
+    rigid_body_vel = Ref(U) .+ cross.(Ref(Omega), eachcol(pts) .- Ref(x0))
     rigid_body_vel .+ vs
 end
 
@@ -182,7 +182,7 @@ function solve_problem!(prob::SwimmingProblem)
         prob.microswimmer.points.location,
         prob.points,
         prob.eps,
-        μ=prob.mu,
+        mu=prob.mu,
         wall=prob.wall
     )
 
@@ -195,9 +195,9 @@ function check_body_boundary_conditions(prob::SwimmingProblem)
     body_pts = prob.points.quad_pts[:,1:prob.microswimmer.body.points.Q]
     x0 = prob.microswimmer.points.location
     U = get_U(prob)
-    Ω = get_Ω(prob)
+    Omega = get_Omega(prob)
 
-    rigid_body_vel = Ref(U) .+ cross.(Ref(Ω), eachcol(body_pts) .- Ref(x0))
+    rigid_body_vel = Ref(U) .+ cross.(Ref(Omega), eachcol(body_pts) .- Ref(x0))
     u = FluidVelocity(prob)
 
     resid = norm.(u.(eachcol(body_pts)) .- rigid_body_vel)
@@ -299,8 +299,8 @@ function update_boundary!(prob::ResistanceProblem, t::T) where {T<:Number}
     end
 end
 
-function add_rigid_body_motion!(prob::ResistanceProblem, U, Ω)
-    prob.points.velocity .= U .+ reduce(hcat, cross.(Ref(Ω), eachcol(prob.points.force_pts)))
+function add_rigid_body_motion!(prob::ResistanceProblem, U, Omega)
+    prob.points.velocity .= U .+ reduce(hcat, cross.(Ref(Omega), eachcol(prob.points.force_pts)))
 end
 
 function solve_problem!(prob::ResistanceProblem)
@@ -311,7 +311,7 @@ function solve_problem!(prob::ResistanceProblem)
         points.quad_pts,
         points.nearest,
         eps;
-        μ=mu,
+        mu=mu,
     )
     lin_prob.b .= reshape(points.velocity, :)
     prob.force_vals = solve(lin_prob, MKLLUFactorization())
@@ -365,8 +365,8 @@ function SwimmingTrajectoryProblem(
 
         move_boundary!(sprob, x0, b1, b2, t)
         solve_problem!(sprob)
-        Ω = get_Ω(sprob)
-        vcat(get_U(sprob), cross(Ω, b1), cross(Ω, b2))
+        Omega = get_Omega(sprob)
+        vcat(get_U(sprob), cross(Omega, b1), cross(Omega, b2))
     end
 
     SwimmingTrajectoryProblem(
@@ -435,7 +435,7 @@ function ParticleTrajectoryProblem(
             rprob.points.quad_pts,
             rprob.points.nearest,
             eps;
-            μ=mu
+            mu=mu
         )
         dX .= A * rprob.force_vals
     end
