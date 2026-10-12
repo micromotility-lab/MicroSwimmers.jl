@@ -169,7 +169,7 @@ function move_boundary!(prob::SwimmingProblem,
     end
 end
 
-function move_boundary!(prob::SwimmingProblem, x0, b1, b2, t=0.0)
+function move_boundary!(prob::SwimmingProblem, x0::AbstractVector, b1::AbstractVector, b2::AbstractVector, t=0.0)
     b1_s = SVector{3}(b1)
     b2_s = SVector{3}(b2)
     B = hcat(b1_s, b2_s, cross(b1_s, b2_s))
