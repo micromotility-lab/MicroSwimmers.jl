@@ -37,12 +37,12 @@ function grand_resistance_matrix(cell::CellBody; eps=0.1)
 
     for (i, n) in enumerate([ex, ey, ez]) 
         prob = ResistanceProblem(cell, eps=eps)
-        add_rigid_body_motion!(prob, n, 0.0)
+        add_rigid_body_motion!(prob, n, [0.0, 0.0, 0.0])
         F, T = total_force_and_torque(prob)
         R[1:3, i] .= F
         R[4:6, i] .= T
         
-        add_rigid_body_motion!(prob, 0.0, n)
+        add_rigid_body_motion!(prob, [0.0, 0.0, 0.0], n)
         solve_problem!(prob)
         F, T = total_force_and_torque(prob)
         R[1:3, 3+i] .= F

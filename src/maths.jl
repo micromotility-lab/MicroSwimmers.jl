@@ -3,7 +3,7 @@ const ex = @SVector [1., 0., 0.]
 const ey = @SVector [0., 1., 0.]
 const ez = @SVector [0., 0., 1.]
 
-function rotation_matrix(axis::AbstractVector{T}, angle::T) where T
+function rotation_matrix(axis::AbstractVector, angle)
     axis = normalize(axis)  # Ensure it's a unit vector
     x, y, z = axis
     c = cos(angle)
