@@ -141,7 +141,7 @@ function (m::PlanarFlagellum)(points::AbstractMatrix{T}, velocities::AbstractMat
         points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
         points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
         velocities[1,1] = (ωθ₁sin_prev*sinθ_prev + ωθ₁sin0*sinθ0) * half_L_ds
-        velocities[1,2] =  - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin0*cosθ0) * half_L_ds
+        velocities[2,1] =  - (ωθ₁sin_prev*cosθ_prev + ωθ₁sin0*cosθ0) * half_L_ds
     end
     
     
@@ -250,8 +250,8 @@ function (m::StandingWaveFlagellum)(points::AbstractMatrix{T}, velocities::Abstr
         sinθ0, cosθ0, θdot0 = orientation_and_velocity_integrands(zero(T), t, m)
         points[1,1] = (cosθ0 + cosθ_prev) * half_L_ds
         points[2,1] = (sinθ0 + sinθ_prev) * half_L_ds
-        velocities[1,1] = (θdot_prev*sinθ_prev + θdot0*sinθ0) * half_L_ds
-        velocities[1,2] =  - (θdot_prev*cosθ_prev + θdot0*cosθ0) * half_L_ds
+        velocities[1,1] = - (θdot_prev*sinθ_prev + θdot0*sinθ0) * half_L_ds
+        velocities[2,1] = (θdot_prev*cosθ_prev + θdot0*cosθ0) * half_L_ds
     end
     
     @inbounds for i in 2:N
