@@ -20,6 +20,7 @@ export supports_quadrature_weights, quadrature_weights!
 export Model, FlagellumModel, CellBodyModel
 export Part, MicroSwimmer, discretise
 export grand_resistance_matrix, add_rigid_body_motion!
+export multi_moments, ff2, ff3, ff4, farfield
 
 # Cell body models
 export EllipsoidBody, EllipsoidalGroovedBody, CylindricalGroovedBody, FlatGroovedBody
@@ -67,8 +68,7 @@ export VelocityField, PlanarVelocityField, get_velocity_function
 export velocity_flux, velocity_flux_polar
 export TimeAveragedPlanarVelocityField, TimeAveragedDisturbanceField
 export shear_tensor, stresslet_from_shear, force_and_torque_shear
-export body_shape_parameter, body_shape_oscillation, average_body_shape, body_mobility_tensor
-export RigidBodyProblem, orientation_ode
-
+export singularity_strengths
+export body_mobility_tensor, orientation_ode, axisym_shape_parameter, body_shape_parameter
 # Repulsion relaxation
 export raymarch_cloud!,relax_cloud!, surface_normal
