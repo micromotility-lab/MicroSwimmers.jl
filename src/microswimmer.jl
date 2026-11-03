@@ -148,7 +148,12 @@ MicroSwimmer(parts::Vector{P}; location=zero(SVector{3}), orientation=I3) where 
 
 update_boundary!(ms::MicroSwimmer, t::T) where {T <: Number} = foreach(p -> update_boundary!(p, t), ms.parts)
 
-add_rigid_body_motion!(ms::MicroSwimmer, U, Ω) = foreach(p -> add_rigid_body_motion!(p, U, Ω), ms.parts)
+function add_rigid_body_motion!(ms::MicroSwimmer, U, Ω)
+    for p in ms.parts
+        F = ms.frame * p.frame
+        p.disc.velocity .= [F.orientation' * (U + cross(Ω, F(x))) for x in p.disc.force_pts]
+    end
+end
 
 function grand_resistance_matrix(ms::MicroSwimmer; eps=nothing, alg=LUFactorization())
     R = zeros(6,6)
