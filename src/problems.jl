@@ -235,13 +235,14 @@ LinearAlgebra.ldiv!(P::PreconditionerBox, x::AbstractVector) = ldiv!(P.lu, x)
 ### SwimmingProblem #######################################################################
 ###########################################################################################
 
-mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache, G <: Union{Nothing, LinearSolve.LinearCache}, P <: Union{Nothing, PreconditionerBox}} <: InstantaneousProblem{MS, D}
+mutable struct SwimmingProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache, G <: Union{Nothing, LinearSolve.LinearCache}, P <: Union{Nothing, PreconditionerBox}, F <: BackgroundFlow} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
     cache::C
     force_vals::Union{Nothing, Vector{T}}
     kernel::K
+    flow::F
     hybrid::Bool
     gmres_cache::G
     pl_box::P
@@ -269,11 +270,12 @@ function make_hybrid_cache(ms::MicroSwimmer, disc::Discretisation, kernel::Kerne
 end
 
 function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}};
-    mu=1.0, eps=nothing, wall=false, alg=LUFactorization(),
+    mu=1.0, eps=nothing, wall=false, flow::BackgroundFlow=NoFlow(), alg=LUFactorization(),
     hybrid=false, refactor_interval=20, max_refactor_interval=100,
     gmres_reltol=1e-10, gmres_maxiters=50
 )
     warn_problem_eps(eps)
+    check_flow(flow, wall)
     disc = global_discretisation(ms)
     N = nf(disc)
     ε0 = kernel_eps_fallback(ms)
@@ -290,6 +292,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
         init(LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)), alg),
         nothing,
         kernel,
+        flow,
         hybrid,
         gmres_cache,
         pl_box,
@@ -304,11 +307,12 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisatio
 end
 
 function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisation}};
-    mu=1.0, eps=nothing, alg=LUFactorization(),
+    mu=1.0, eps=nothing, flow::BackgroundFlow=NoFlow(), alg=LUFactorization(),
     hybrid=false, refactor_interval=20, max_refactor_interval=100,
     gmres_reltol=1e-7, gmres_maxiters=5
 )
     warn_problem_eps(eps)
+    check_flow(flow, false)
     disc   = global_nystrom_discretisation(ms)
     N      = nf(disc)
     kernel = RegStokeslet(kernel_eps_fallback(ms))
@@ -327,6 +331,7 @@ function SwimmingProblem(ms::MicroSwimmer{<:Part{<:Model, <:NystromDiscretisatio
         init(LinearProblem(zeros(3N+6, 3N+6), zeros(3N+6)), alg),
         nothing,
         kernel,
+        flow,
         hybrid,
         gmres_cache,
         pl_box,
@@ -411,18 +416,25 @@ function move_boundary!(prob::SwimmingProblem, x0::SVector{3,T}, b1::SVector{3,T
     move_boundary!(prob, x0, SMatrix{3,3,T,9}(hcat(b1, b2, cross(b1, b2))), t)
 end
 
-function fill_swimming_rhs!(b, disc)
+function fill_swimming_rhs!(b, disc, flow)
     N3 = 3 * nf(disc)
     T  = eltype(eltype(disc.velocity))
     @views b[1:N3] .= reinterpret(T, disc.velocity)
+    subtract_flow!(reinterpret(SVector{3,T}, view(b, 1:N3)), disc.force_pts, flow)
     @views b[N3+1:end] .= zero(T)
+end
+
+function fill_resistance_rhs!(b, disc, flow)
+    T = eltype(eltype(disc.velocity))
+    b .= reinterpret(T, disc.velocity)
+    subtract_flow!(reinterpret(SVector{3,T}, b), disc.force_pts, flow)
 end
 
 function dense_solve!(prob::SwimmingProblem)
     @unpack cache, disc, kernel, mu, microswimmer, pl_box = prob
     assemble_swimming!(cache.A, microswimmer.frame.location, disc, kernel; μ=mu)
     cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
-    fill_swimming_rhs!(cache.b, disc)
+    fill_swimming_rhs!(cache.b, disc, prob.flow)
     prob.force_vals = solve!(cache).u
     if prob.hybrid
         copyto!(pl_box.lu.factors, cache.cacheval.factors)
@@ -440,7 +452,7 @@ end
 # dense solve rather than accepting an unconverged answer.
 function try_gmres_solve!(prob::SwimmingProblem)
     gc = prob.gmres_cache
-    fill_swimming_rhs!(gc.b, prob.disc)
+    fill_swimming_rhs!(gc.b, prob.disc, prob.flow)
     # SimpleGMRES's internal cache snapshots A/b/x once and does not pick up new values on
     # repeat solve! calls unless isfresh is set — force it to rebuild from the current b
     # (preconditioned by the still-stale pl_box.lu) every hybrid step.
@@ -488,17 +500,19 @@ end
 ### ResistanceProblem #####################################################################
 ###########################################################################################
 
-mutable struct ResistanceProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache} <: InstantaneousProblem{MS, D}
+mutable struct ResistanceProblem{MS <: MicroSwimmer, D <: Discretisation, T <: Number, K <: Kernel, C <: LinearSolve.LinearCache, F <: BackgroundFlow} <: InstantaneousProblem{MS, D}
     microswimmer::MS
     disc::D
     mu::T
     cache::C
     force_vals::Union{Nothing, Vector{T}}
     kernel::K
+    flow::F
 end
 
-function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=nothing, wall=false, alg=LUFactorization())
+function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisation}}; mu=1.0, eps=nothing, wall=false, flow::BackgroundFlow=NoFlow(), alg=LUFactorization())
     warn_problem_eps(eps)
+    check_flow(flow, wall)
     disc = global_discretisation(ms)
     N    = nf(disc)
     ε0   = kernel_eps_fallback(ms)
@@ -508,7 +522,8 @@ function ResistanceProblem(ms::MicroSwimmer{<:Part{<:Model, <:NearestDiscretisat
         Float64(mu),
         init(LinearProblem(zeros(3N, 3N), zeros(3N)), alg),
         nothing,
-        wall ? RegBlakelet(ε0) : RegStokeslet(ε0)
+        wall ? RegBlakelet(ε0) : RegStokeslet(ε0),
+        flow
     )
     gather_nearest!(prob)
     prob
@@ -579,7 +594,7 @@ function solve_problem!(prob::ResistanceProblem)
     gather!(prob)
     assemble!(cache.A, disc, kernel; μ=mu)
     cache.isfresh = true  # A was mutated in-place; tell LinearSolve to refactorise
-    cache.b .= reinterpret(eltype(eltype(disc.velocity)), disc.velocity)
+    fill_resistance_rhs!(cache.b, disc, prob.flow)
     prob.force_vals = solve!(cache).u
 end
 
@@ -633,6 +648,7 @@ function SwimmingTrajectoryProblem(
     eps=nothing,
     mu=1.0,
     wall=false,
+    flow::BackgroundFlow=NoFlow(),
     alg=LUFactorization(),
     hybrid=false,
     refactor_interval=20,
@@ -641,7 +657,7 @@ function SwimmingTrajectoryProblem(
     gmres_maxiters=50
 )
     T = Float64
-    sprob = SwimmingProblem(ms; eps=eps, mu=T(mu), wall=wall,
+    sprob = SwimmingProblem(ms; eps=eps, mu=T(mu), wall=wall, flow=flow,
         hybrid=hybrid, alg=alg, refactor_interval=refactor_interval,
         max_refactor_interval=max_refactor_interval,
         gmres_reltol=gmres_reltol, gmres_maxiters=gmres_maxiters)
@@ -666,8 +682,10 @@ function SwimmingTrajectoryProblem(
     )
 end
 
-function solve_problem!(prob::SwimmingTrajectoryProblem; method=VCABM(), periodic=false)
-    sol = solve(prob.ode_prob, method)
+# Extra kwargs (reltol, abstol, ...) go straight to the ODE solver. The defaults are loose
+# enough that the body axes b1, b2 visibly lose unit length over one Jeffery orbit.
+function solve_problem!(prob::SwimmingTrajectoryProblem; method=VCABM(), periodic=false, kwargs...)
+    sol = solve(prob.ode_prob, method; kwargs...)
     u   = sol.u
     T = eltype(eltype(u))
     x   = [SVector{3,T}(u[i][1:3]) for i in eachindex(u)]
@@ -730,10 +748,11 @@ function ParticleTrajectoryProblem(
     t_final::T=20.0,
     saveat::T=0.05,
     eps=nothing,
-    mu=1.0
+    mu=1.0,
+    flow::BackgroundFlow=NoFlow()
 ) where {T<:Number}
     num_particles = length(ys)*length(zs)
-    rprob = ResistanceProblem(microswimmer; eps=eps, mu=mu)
+    rprob = ResistanceProblem(microswimmer; eps=eps, mu=mu, flow=flow)
     N = nf(rprob.disc)
     A = zeros(3 * num_particles, 3N)
 
@@ -748,6 +767,11 @@ function ParticleTrajectoryProblem(
                       ranges=rprob.disc.quad_part_ranges, quad_eps=rprob.disc.quad_eps)
         end
         dX .= A * rprob.force_vals
+        # Tracers move with the total flow, not just the swimmer's disturbance
+        for i in 1:num_particles
+            u = add_flow(zero(SVector{3,Float64}), SVector{3}(X[3i-2], X[3i-1], X[3i]), flow)
+            dX[3i-2] += u[1]; dX[3i-1] += u[2]; dX[3i] += u[3]
+        end
     end
 
     tspan = (0.0, t_final)

@@ -1,6 +1,6 @@
 # Calculate the velocity at an arbitrary point in the fluid
 
-struct FluidVelocity{T <: Number, K <: Kernel}
+struct FluidVelocity{T <: Number, K <: Kernel, F <: BackgroundFlow}
     quad_pts::Vector{SVector{3,T}}
     nearest::Vector{Int}
     quad_wts::Union{Nothing, Vector{T}}
@@ -10,6 +10,7 @@ struct FluidVelocity{T <: Number, K <: Kernel}
     mu::T
     force_vals::Vector{T}   # 3N force components (excluding U/Ω for SwimmingProblem)
     A::Matrix{T}            # 3 × 3N scratch buffer
+    flow::F                 # NoFlow() unless the total (disturbance + background) field was asked for
 end
 
 _fluid_quad_pts(disc::NearestDiscretisation) = disc.quad_pts
@@ -27,7 +28,7 @@ _fluid_quad_wts(::NystromDiscretisation)     = nothing
 # point evaluated at the wrong eps disagrees with the solve that produced force_vals.
 _fluid_ranges(disc::Discretisation) = disc.quad_part_ranges
 
-function FluidVelocity(prob::InstantaneousProblem)
+function FluidVelocity(prob::InstantaneousProblem; total::Bool=false)
     check_solved!(prob)
     N  = nf(prob.disc)
     fv = prob.force_vals[1:3N]  # leave out U and Ω for SwimmingProblem
@@ -40,14 +41,16 @@ function FluidVelocity(prob::InstantaneousProblem)
         prob.kernel,
         prob.mu,
         fv,
-        zeros(eltype(fv), 3, 3N)
+        zeros(eltype(fv), 3, 3N),
+        total ? prob.flow : NoFlow()
     )
 end
 
 function (fv::FluidVelocity)(x)
-    assemble!(fv.A, [SVector{3}(x)], fv.quad_pts, fv.nearest, fv.quad_wts, fv.kernel;
+    x = SVector{3}(x)
+    assemble!(fv.A, [x], fv.quad_pts, fv.nearest, fv.quad_wts, fv.kernel;
               μ=fv.mu, ranges=fv.ranges, quad_eps=fv.quad_eps)
-    SVector{3}(fv.A * fv.force_vals)
+    add_flow(SVector{3}(fv.A * fv.force_vals), x, fv.flow)
 end
 
 struct PlanarVelocityField{T <: Number}

@@ -44,6 +44,7 @@ export assemble!, assemble_swimming!, mul_swimming!
 
 # Problems
 export SwimmingProblem, ResistanceProblem, SwimmingTrajectoryProblem, ParticleTrajectoryProblem
+export BackgroundFlow, NoFlow, LinearFlow, UniformFlow, ShearFlow
 export SwimmingOperator, PreconditionerBox
 export solve_problem!
 export get_U, get_Ω, get_force_pts, get_forces
