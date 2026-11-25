@@ -18,7 +18,10 @@ quadrature_weights!(::Model, ::Discretisation) = nothing
 function (m::ImplicitBodyModel)(disc::NearestDiscretisation, N, Q; weighted=false)
       T = eltype(eltype(disc.force_pts))
       f = x -> implicit(m, x)
-      R = bounding_radius(m)
+      # bounding_radius bounds the surface about the origin, but the rays start at the seed, so
+      # they must reach |seed| further: with an off-centre seed (a groove centre) rays stopping at
+      # bounding_radius missed the far end of the body entirely.
+      R = bounding_radius(m) + norm(seed(m))
       # Weights belong to the quadrature cloud only: the force points carry unknowns, not
       # area, so their ray-march weights are discarded.
       raymarch_cloud!(disc.force_pts, f, R, N; seed=seed(m))
